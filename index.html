@@ -598,16 +598,14 @@ details.setbox > .sets{padding-top:10px}
         ${segRow('setup', 'dir', '문제', setup.dir, [['en', '단어→뜻'], ['ko', '뜻→단어'], ['mix', '섞기']].concat(TTS.ok ? [['listen', '듣기']] : []))}
         ${segRow('setup', 'type', '답하기', setup.type, [['mc', '4지선다', !mcOk], ['type', '직접 입력']])}
         ${segRow('setup', 'count', '문항 수', setup.count, [['all', '전체'], ['10', '10'], ['20', '20'], ['30', '30']])}
-        ${TTS.ok ? segRow('setup', 'auto', '읽어주기', ttsOpt.auto, [[true, '켜기'], [false, '끄기']]) : ''}
       </div>
-      <div class="hint" id="dirHint">${({ en: '영어 단어를 보고 뜻을 고릅니다.', ko: '뜻을 보고 영어 단어를 고릅니다.', mix: '두 방향이 무작위로 섞여 나옵니다.', listen: '단어를 화면에 보여주지 않고 소리로만 들려줍니다.' })[setup.dir]}</div>
+      <div class="hint" id="dirHint">${({ en: '영어 단어를 보고 뜻을 고릅니다.', ko: '뜻을 보고 영어 단어를 고릅니다.', mix: '두 방향이 무작위로 섞여 나옵니다.', listen: '단어를 숨기고, 스피커 버튼을 눌러 소리로 듣고 뜻을 고릅니다.' })[setup.dir]}</div>
       <div class="setupfoot"><span class="sub">${pool.length ? `${n}문제 · 순서는 매번 랜덤` : 'Day를 하나 이상 고르세요'}</span>
         <button class="btn primary" id="start" ${pool.length ? '' : 'disabled'}>시작</button></div>
     </section>`;
     app.querySelectorAll('[data-sel]').forEach(b => b.onclick = () => { const id = b.dataset.sel; setup.sel.has(id) ? setup.sel.delete(id) : setup.sel.add(id); render(); });
     $('#selAll').onclick = () => { if (setup.sel.size === list.length) setup.sel.clear(); else list.forEach(d => setup.sel.add(d.id)); render(); };
     bindSegs($('#setupOpts'), (k, v) => {
-      if (k === 'auto') { ttsOpt.auto = v; saveTts(); return; }
       setup[k] = String(v); render();
     });
     $('#start').onclick = () => startQuiz(poolFor(setup.sel));
@@ -676,14 +674,13 @@ details.setbox > .sets{padding-top:10px}
     app.innerHTML = `<section class="panel">
       <div class="qtop"><span class="num">${quiz.i + 1} / ${total}</span><span class="sub">${esc(it.w.day)}</span><button class="ghost" id="quit">그만하기</button></div>
       <div class="bar"><i style="width:${(quiz.i + (answered ? 1 : 0)) / total * 100}%"></i></div>
-      <div class="prompt"><span class="dir">${it.dir === 'ko' ? '영어 단어는?' : it.dir === 'listen' ? '듣고 뜻을 고르세요' : '뜻은?'}</span><span class="q ${it.dir === 'ko' ? 'ko' : ''}">${hideQ ? '· · ·' : esc(q)}</span>${TTS.ok ? `<button class="spk" id="qSay" aria-label="문제 듣기" title="다시 듣기">${SPK}</button>` : ''}</div>
+      <div class="prompt"><span class="dir">${it.dir === 'ko' ? '영어 단어는?' : it.dir === 'listen' ? '듣고 뜻을 고르세요' : '뜻은?'}</span><span class="q ${it.dir === 'ko' ? 'ko' : ''}">${hideQ ? '· · ·' : esc(q)}</span>${TTS.ok ? `<button class="spk" id="qSay" aria-label="문제 듣기" title="듣기">${SPK}</button>` : ''}</div>
       ${body}${fb}
       <div class="qfoot"><span class="hint">${it.options ? '숫자키 1–4로 선택, ' : ''}Enter로 다음</span><button class="btn primary" id="next" ${answered ? '' : 'hidden'}>${quiz.i < total - 1 ? '다음' : '결과 보기'}</button></div>
     </section>`;
     app.querySelectorAll('[data-o]').forEach(b => b.onclick = () => answer(it.options[+b.dataset.o]));
     if ($('#tf')) { $('#tf').onsubmit = e => { e.preventDefault(); const v = $('#ta').value.trim(); if (v) answer(v); }; if (!answered) $('#ta').focus(); }
     $('#qSay') && ($('#qSay').onclick = () => sayNow(q));
-    if (TTS.ok && quiz.spoken !== quiz.i && (ttsOpt.auto || it.dir === 'listen')) { quiz.spoken = quiz.i; sayNow(q); }
     $('#override') && ($('#override').onclick = () => { it.correct = true; render(); });
     $('#quit').onclick = () => { view = 'result'; quiz.items = quiz.items.slice(0, quiz.i + (answered ? 1 : 0)); render(); };
     if (answered) $('#next').focus();
@@ -722,11 +719,11 @@ details.setbox > .sets{padding-top:10px}
   try { const o = JSON.parse(localStorage.getItem('vocab-export') || '{}'); delete o.sel; if (typeof o.meaning === 'boolean' && !('mrep' in o)) o.mrep = o.meaning ? 1 : 0; delete o.meaning; Object.assign(exportOpt, o); } catch (e) {}
   const saveExportOpt = () => { try { const { sel, ...rest } = exportOpt; localStorage.setItem('vocab-export', JSON.stringify(rest)); } catch (e) {} };
   let exportSetOpen = false;
-  const exportSummary = () => `단어 ${exportOpt.rep}회 · 뜻 ${exportOpt.mrep ? exportOpt.mrep + '회' : '없음'} · 간격 ${exportOpt.gap}줄${exportOpt.style === 'dot' ? '(마침표)' : ''} · ${exportOpt.order === 'rand' ? '랜덤' : '입력 순서'}`;
+  const exportSummary = () => `단어 ${exportOpt.rep}회 · 뜻 ${exportOpt.mrep ? exportOpt.mrep + '회' : '없음'} · 간격 ${exportOpt.gap}줄${({ dot: '(마침표)', comma: '(쉼표)' })[exportOpt.style] || ''} · ${exportOpt.order === 'rand' ? '랜덤' : '입력 순서'}`;
   const withDot = t => /[.!?。…]$/.test(t.trim()) ? t.trim() : t.trim() + '.';
   function buildText() {
     const out = [];
-    const gapLines = () => { for (let k = 0; k < exportOpt.gap; k++) out.push(exportOpt.style === 'dot' ? '.' : ''); };
+    const gapLines = () => { for (let k = 0; k < exportOpt.gap; k++) out.push(({ dot: '.', comma: ',' })[exportOpt.style] || ''); };
     const chosen = sorted().filter(d => exportOpt.sel.includes(d.id) && d.words.length);
     chosen.forEach((d, di) => {
       if (exportOpt.title) { out.push(withDot(d.name)); gapLines(); }
@@ -738,7 +735,7 @@ details.setbox > .sets{padding-top:10px}
       });
       if (di < chosen.length - 1) gapLines();
     });
-    while (out.length && (out[out.length - 1] === '' || out[out.length - 1] === '.')) out.pop();
+    while (out.length && ['', '.', ','].includes(out[out.length - 1])) out.pop();
     return out.join('\n') + '\n';
   }
   function renderExport() {
@@ -755,12 +752,12 @@ details.setbox > .sets{padding-top:10px}
           ${segRow('export', 'rep', '단어 반복', exportOpt.rep, nOpts([1, 2, 3], '회'))}
           ${segRow('export', 'mrep', '뜻 반복', exportOpt.mrep, nOpts([0, 1, 2, 3], '회', '없음'))}
           ${segRow('export', 'gap', '세트 간격', exportOpt.gap, [[1, '1줄'], [2, '2줄'], [4, '4줄'], [6, '6줄']])}
-          ${segRow('export', 'style', '간격 모양', exportOpt.style, [['blank', '빈 줄'], ['dot', '마침표 줄']])}
+          ${segRow('export', 'style', '간격 모양', exportOpt.style, [['blank', '빈 줄'], ['dot', '마침표'], ['comma', '쉼표']])}
           ${segRow('export', 'order', '순서', exportOpt.order, [['seq', '입력 순서'], ['rand', '랜덤']])}
           ${segRow('export', 'title', 'Day 제목', exportOpt.title, [[true, '넣기'], [false, '빼기']])}
           ${segRow('export', 'num', '번호', exportOpt.num, [[false, '빼기'], [true, '넣기']])}
         </div>
-        <div class="hint">앱이 빈 줄을 무시하고 바로 이어 읽으면 간격 모양을 "마침표 줄"로 바꾸거나 간격을 늘려 보세요.</div>
+        <div class="hint">앱이 빈 줄을 무시하고 바로 이어 읽으면 간격 모양을 "쉼표"나 "마침표"로 바꾸고, 간격 줄 수를 늘려 길이를 조절해 보세요.</div>
       </details>
       <div class="field"><span class="label">미리보기 <span class="num" id="xCount">· ${nWords}단어</span></span>
         <textarea id="xText" readonly style="min-height:220px">${esc(text)}</textarea></div>
