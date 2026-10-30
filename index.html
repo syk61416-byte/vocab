@@ -73,6 +73,21 @@ textarea{min-height:130px;font-family:var(--f-num);font-size:14px;resize:vertica
 .row .w{font:600 18px var(--f-word);overflow-wrap:anywhere}
 .row .m{overflow-wrap:anywhere}
 .row .acts{display:flex;gap:2px}
+.row.speaking{background:var(--accent-soft);border-radius:6px}
+.spk{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border:0;background:none;color:var(--muted);border-radius:6px;cursor:pointer;flex:none}
+.spk:hover{color:var(--accent);background:var(--accent-soft)}
+.spk svg{width:18px;height:18px}
+.prompt .spk{width:40px;height:40px;align-self:center;color:var(--accent)}
+.prompt .spk svg{width:24px;height:24px}
+.listen{display:flex;flex-direction:column;gap:10px;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:12px}
+.listen .top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.listen .now{flex:1 1 160px;min-width:0;font-size:13px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.listen .now b{font:600 15px var(--f-word);color:var(--ink)}
+.listen .opts2{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center}
+.mini{display:inline-flex;align-items:center;gap:4px;font-size:13px;color:var(--muted)}
+.mini .seg button{padding:4px 9px;font-size:13px}
+.listen-in{display:flex;flex-direction:column;gap:10px}
+.mini select{max-width:min(260px,62vw);font:13px var(--f-ui);color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:4px 6px}
 .row.editing{grid-template-columns:2.2em minmax(0,1fr) minmax(0,1.4fr) auto}
 .empty{text-align:center;padding:28px 12px;color:var(--muted);display:flex;flex-direction:column;gap:12px;align-items:center}
 .empty strong{color:var(--ink);font-size:16px}
@@ -287,6 +302,131 @@ textarea{min-height:130px;font-family:var(--f-num);font-size:14px;resize:vertica
     ['deteriorate','악화되다'],['feasible','실현 가능한']
   ];
 
+  // ---------- speech (Web Speech API) ----------
+  const TTS = { ok: typeof window.speechSynthesis !== 'undefined' && typeof window.SpeechSynthesisUtterance !== 'undefined', voices: [] };
+  const SPK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>';
+  const ttsOpt = { meaning: true, rep: 1, rate: 0.9, order: 'seq', auto: true };
+  try { Object.assign(ttsOpt, JSON.parse(localStorage.getItem('vocab-tts') || '{}')); } catch (e) {}
+  const saveTts = () => { try { localStorage.setItem('vocab-tts', JSON.stringify(ttsOpt)); } catch (e) {} };
+  function loadVoices() { try { TTS.voices = speechSynthesis.getVoices() || []; } catch (e) {} }
+  if (TTS.ok) { loadVoices(); try { speechSynthesis.addEventListener('voiceschanged', () => { loadVoices(); paintVoices(); }); } catch (e) {} }
+  const langOf = t => /[\u3131-\u318E\uAC00-\uD7A3]/.test(t) ? 'ko-KR' : 'en-US';
+  // macOS/iOS에 들어 있는 효과음성(장난용 목소리)은 기본 후보에서 뺀다
+  const NOVELTY = /^(Albert|Bad News|Bahh|Bells|Boing|Bubbles|Cellos|Deranged|Good News|Hysterical|Jester|Junior|Organ|Pipe Organ|Princess|Ralph|Superstar|Trinoids|Whisper|Wobble|Zarvox|Fred|Kathy)\b/i;
+  const PREFER = { en: [/Samantha/i, /Ava/i, /Allison/i, /Susan/i, /Alex\b/i, /Daniel/i, /Karen/i, /Moira/i, /Google US English/i, /Google UK English Female/i, /Microsoft (Aria|Jenny|Zira)/i], ko: [/Yuna/i, /Sora/i, /Google 한국/i, /Microsoft (SunHi|Heami)/i] };
+  ttsOpt.voice = ttsOpt.voice || {};
+  const sameLang = (x, L) => x.lang && x.lang.replace('_', '-').toLowerCase().startsWith(L);
+  function voicesFor(lang) {
+    const L = lang.slice(0, 2).toLowerCase();
+    return TTS.voices.filter(x => sameLang(x, L) && !NOVELTY.test(x.name));
+  }
+  function pickVoice(lang) {
+    const L = lang.slice(0, 2).toLowerCase(), list = voicesFor(lang);
+    const chosen = ttsOpt.voice[L] && list.find(x => x.name === ttsOpt.voice[L]);
+    if (chosen) return chosen;
+    for (const re of PREFER[L] || []) { const v = list.find(x => re.test(x.name)); if (v) return v; }
+    const exact = list.filter(x => x.lang.replace('_', '-').toLowerCase() === lang.toLowerCase());
+    return exact.find(x => x.default) || exact[0] || list[0] || null;
+  }
+  function paintVoices() {
+    const box = $('#voiceBox'); if (!box || !TTS.ok) return;
+    const row = (lang, label, sample) => {
+      const list = voicesFor(lang), cur = pickVoice(lang);
+      if (!list.length) return `<span class="mini">${label} <span class="hint">기기에 맞는 음성이 없어요</span></span>`;
+      return `<label class="mini">${label} <select data-voice="${lang.slice(0, 2)}" data-sample="${sample}">${list.map(v => `<option value="${esc(v.name)}" ${cur && cur.name === v.name ? 'selected' : ''}>${esc(v.name)} (${esc(v.lang)})</option>`).join('')}</select></label>`;
+    };
+    box.innerHTML = row('en-US', '영어 목소리', 'Hello, this is your vocabulary voice.') + row('ko-KR', '한국어 목소리', '안녕하세요, 뜻을 읽어 드릴게요.');
+    box.querySelectorAll('select[data-voice]').forEach(sel => sel.onchange = () => { ttsOpt.voice[sel.dataset.voice] = sel.value; saveTts(); sayNow(sel.dataset.sample); });
+  }
+  function say(text, done) {
+    if (!TTS.ok) { done && done(); return; }
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = langOf(text); const v = pickVoice(u.lang); if (v) u.voice = v;
+    u.rate = ttsOpt.rate;
+    let fired = false; const fin = () => { if (!fired) { fired = true; done && done(); } };
+    u.onend = fin; u.onerror = fin;
+    speechSynthesis.speak(u);
+  }
+  function sayNow(text) { if (!TTS.ok) return; stopPlayer(); speechSynthesis.cancel(); say(text); }
+
+  // Day 전체 읽기 플레이어: 단계 목록을 만들고 한 문장씩 이어서 읽는다
+  let player = null, ptok = 0;
+  function buildSteps(day, startId) {
+    let ws = day.words.slice();
+    if (ttsOpt.order === 'rand') ws = shuffle(ws);
+    else if (startId) { const k = ws.findIndex(w => w.id === startId); if (k > 0) ws = ws.slice(k); }
+    const steps = [];
+    for (const w of ws) {
+      for (let r = 0; r < ttsOpt.rep; r++) steps.push({ id: w.id, text: w.w, gap: 450 });
+      if (ttsOpt.meaning) steps.push({ id: w.id, text: w.m, gap: 900 });
+      else steps[steps.length - 1].gap = 900;
+    }
+    return steps;
+  }
+  function playDay(day, startId) {
+    if (!TTS.ok || !day.words.length) return;
+    stopPlayer(); speechSynthesis.cancel();
+    player = { dayId: day.id, steps: buildSteps(day, startId), cur: 0, playing: true, timer: null };
+    stepPlayer(); paintPlayer();
+  }
+  function stepPlayer() {
+    if (!player || !player.playing) return;
+    if (player.cur >= player.steps.length) { stopPlayer(); toast('다 읽었어요'); return; }
+    const st = player.steps[player.cur], t = ++ptok;
+    markSpeaking(st.id); paintPlayer();
+    say(st.text, () => {
+      if (t !== ptok || !player || !player.playing) return;
+      player.timer = setTimeout(() => { if (t !== ptok || !player) return; player.cur++; stepPlayer(); }, st.gap);
+    });
+  }
+  function pausePlayer() { if (!player) return; player.playing = false; ptok++; clearTimeout(player.timer); speechSynthesis.cancel(); paintPlayer(); }
+  function resumePlayer() { if (!player) return; player.playing = true; stepPlayer(); }
+  function stopPlayer() {
+    if (player) clearTimeout(player.timer);
+    const had = !!player; player = null; ptok++;
+    if (had && TTS.ok) speechSynthesis.cancel();
+    markSpeaking(null); paintPlayer();
+  }
+  function markSpeaking(id) {
+    document.querySelectorAll('.row.speaking').forEach(r => r.classList.remove('speaking'));
+    if (!id) return;
+    const r = document.querySelector(`.list .row[data-w="${id}"]`);
+    if (r) { r.classList.add('speaking'); try { r.scrollIntoView({ block: 'nearest' }); } catch (e) {} }
+  }
+  function paintPlayer() {
+    const box = $('#playerBox'); if (!box) return;
+    const day = days.find(d => d.id === curDay); if (!day) return;
+    const mine = player && player.dayId === day.id;
+    const st = mine ? player.steps[Math.min(player.cur, player.steps.length - 1)] : null;
+    const w = st ? day.words.find(x => x.id === st.id) : null;
+    const pos = mine ? `${new Set(player.steps.slice(0, player.cur + 1).map(s => s.id)).size} / ${new Set(player.steps.map(s => s.id)).size}` : '';
+    const segBtn = (key, v, label) => `<button data-t="${key}" data-v="${v}" aria-pressed="${String(ttsOpt[key]) === String(v)}">${label}</button>`;
+    box.innerHTML = `<div class="top">
+        ${!mine ? `<button class="btn primary sm" id="pPlay" ${day.words.length ? '' : 'disabled'}>전체 듣기</button>`
+          : player.playing ? `<button class="btn primary sm" id="pPause">일시정지</button>` : `<button class="btn primary sm" id="pResume">이어 듣기</button>`}
+        ${mine ? `<button class="btn sm" id="pStop">정지</button>` : ''}
+        <span class="now">${w ? `<span class="num">${pos}</span> · <b>${esc(w.w)}</b> ${esc(w.m)}` : '단어 → 뜻 순서로 읽어줘요. 단어 옆 스피커는 하나만 읽어요.'}</span>
+      </div>
+      <div class="opts2">
+        <span class="mini">뜻 <span class="seg">${segBtn('meaning', true, '읽기')}${segBtn('meaning', false, '안 읽기')}</span></span>
+        <span class="mini">단어 반복 <span class="seg">${segBtn('rep', 1, '1')}${segBtn('rep', 2, '2')}${segBtn('rep', 3, '3')}</span></span>
+        <span class="mini">속도 <span class="seg">${segBtn('rate', 0.7, '느리게')}${segBtn('rate', 0.9, '보통')}${segBtn('rate', 1.1, '빠르게')}</span></span>
+        <span class="mini">순서 <span class="seg">${segBtn('order', 'seq', '그대로')}${segBtn('order', 'rand', '랜덤')}</span></span>
+      </div>`;
+    $('#pPlay') && ($('#pPlay').onclick = () => playDay(day));
+    $('#pPause') && ($('#pPause').onclick = pausePlayer);
+    $('#pResume') && ($('#pResume').onclick = resumePlayer);
+    $('#pStop') && ($('#pStop').onclick = stopPlayer);
+    box.querySelectorAll('[data-t]').forEach(b => b.onclick = () => {
+      const k = b.dataset.t, raw = b.dataset.v;
+      ttsOpt[k] = raw === 'true' ? true : raw === 'false' ? false : isNaN(+raw) ? raw : +raw;
+      saveTts();
+      // 재생 중이면 지금 단어부터 새 설정으로 다시 구성
+      if (player && player.dayId === day.id && k !== 'rate') { const cid = player.steps[player.cur]?.id; const was = player.playing; playDay(day, ttsOpt.order === 'seq' ? cid : null); if (!was) pausePlayer(); }
+      else paintPlayer();
+    });
+  }
+
   // ---------- render: word book ----------
   function renderWords() {
     const list = sorted();
@@ -305,7 +445,7 @@ textarea{min-height:130px;font-family:var(--f-num);font-size:14px;resize:vertica
     const chips = list.map(d => `<button class="chip" aria-pressed="${d.id === curDay}" data-day="${d.id}">${esc(d.name)} <span class="num">${d.words.length}</span></button>`).join('');
     const rows = day.words.map((x, i) => editingWord === x.id
       ? `<div class="row editing" data-w="${x.id}"><span class="idx num">${i + 1}</span><input type="text" id="ew-${x.id}" value="${esc(x.w)}" aria-label="단어"><input type="text" id="em-${x.id}" value="${esc(x.m)}" aria-label="뜻"><span class="acts"><button class="ghost" data-save="${x.id}">저장</button><button class="ghost" data-cancel>취소</button></span></div>`
-      : `<div class="row" data-w="${x.id}"><span class="idx num">${i + 1}</span><span class="w">${esc(x.w)}</span><span class="m">${esc(x.m)}</span><span class="acts"><button class="ghost" data-edit="${x.id}">수정</button><button class="ghost" data-del="${x.id}">삭제</button></span></div>`).join('');
+      : `<div class="row" data-w="${x.id}"><span class="idx num">${i + 1}</span><span class="w">${esc(x.w)}</span><span class="m">${esc(x.m)}</span><span class="acts">${TTS.ok ? `<button class="spk" data-say="${x.id}" aria-label="${esc(x.w)} 듣기" title="듣기">${SPK}</button>` : ''}<button class="ghost" data-edit="${x.id}">수정</button><button class="ghost" data-del="${x.id}">삭제</button></span></div>`).join('');
     app.innerHTML = `
       <div class="field"><span class="label">Day</span><div class="days">${chips}<button class="chip add" id="addDay">+ Day 추가</button></div></div>
       <section class="panel">
@@ -316,6 +456,7 @@ textarea{min-height:130px;font-family:var(--f-num);font-size:14px;resize:vertica
           <button class="btn sm" id="testThis" ${day.words.length ? '' : 'disabled'}>이 Day 테스트</button>
           <button class="btn sm danger ${armedDelete === day.id ? 'armed' : ''}" id="delDay">${armedDelete === day.id ? '정말 삭제' : 'Day 삭제'}</button>
         </div>
+        ${TTS.ok ? '<div class="listen"><div id="playerBox" class="listen-in"></div><div id="voiceBox" class="opts2"></div></div>' : ''}
         <form class="addform" id="addform" autocomplete="off">
           <input type="text" id="nw" placeholder="단어 (예: abundant)" aria-label="단어">
           <input type="text" id="nm" placeholder="뜻 (예: 풍부한)" aria-label="뜻">
@@ -332,14 +473,14 @@ textarea{min-height:130px;font-family:var(--f-num);font-size:14px;resize:vertica
         <div class="list">${rows || `<div class="empty">이 Day에는 아직 단어가 없어요. 위에서 추가하세요.</div>`}</div>
       </section>`;
 
-    app.querySelectorAll('[data-day]').forEach(b => b.onclick = () => { curDay = b.dataset.day; editingWord = null; armedDelete = null; render(); });
+    app.querySelectorAll('[data-day]').forEach(b => b.onclick = () => { if (curDay !== b.dataset.day) stopPlayer(); curDay = b.dataset.day; editingWord = null; armedDelete = null; render(); });
     $('#addDay').onclick = () => { addDay(); editingWord = null; render(); $('#nw')?.focus(); };
     const dn = $('#dayname');
     dn.onchange = () => { const v = dn.value.trim(); if (v && v !== day.name) { day.name = v; saveDay(day); render(); } else dn.value = day.name; };
     dn.onkeydown = e => { if (e.key === 'Enter') dn.blur(); };
     $('#delDay').onclick = () => {
       if (armedDelete !== day.id) { armedDelete = day.id; render(); setTimeout(() => { if (armedDelete === day.id) { armedDelete = null; if (view === 'words') render(); } }, 3500); return; }
-      days = days.filter(d => d.id !== day.id); setup.sel.delete(day.id); removeDay(day.id); armedDelete = null; curDay = null; setStatus(); render(); toast(`${day.name} 삭제됨`);
+      if (player && player.dayId === day.id) stopPlayer(); days = days.filter(d => d.id !== day.id); setup.sel.delete(day.id); removeDay(day.id); armedDelete = null; curDay = null; setStatus(); render(); toast(`${day.name} 삭제됨`);
     };
     $('#testThis').onclick = () => { setup.sel = new Set([day.id]); switchTab('test'); };
     $('#addform').onsubmit = e => {
@@ -362,6 +503,9 @@ textarea{min-height:130px;font-family:var(--f-num);font-size:14px;resize:vertica
       b.onclick = go; [$('#ew-' + id), $('#em-' + id)].forEach(i => i.onkeydown = e => { if (e.key === 'Enter') go(); if (e.key === 'Escape') { editingWord = null; render(); } });
     });
     app.querySelectorAll('[data-del]').forEach(b => b.onclick = () => { const i = day.words.findIndex(x => x.id === b.dataset.del); const [x] = day.words.splice(i, 1); saveDay(day); setStatus(); render(); toast(`"${x.w}" 삭제됨`); });
+    app.querySelectorAll('[data-say]').forEach(b => b.onclick = () => { const x = day.words.find(x => x.id === b.dataset.say); if (x) { sayNow(x.w); if (ttsOpt.meaning) say(x.m); } });
+    paintPlayer(); paintVoices();
+    if (player && player.dayId === day.id) markSpeaking(player.steps[player.cur]?.id);
   }
 
   // ---------- render: test setup ----------
@@ -383,7 +527,8 @@ textarea{min-height:130px;font-family:var(--f-num);font-size:14px;resize:vertica
       <div class="field"><span class="label">범위</span>
         <div class="days">${list.map(d => `<button class="chip" data-sel="${d.id}" aria-pressed="${setup.sel.has(d.id)}">${esc(d.name)} <span class="num">${d.words.length}</span></button>`).join('')}
         <button class="chip add" id="selAll">${setup.sel.size === list.length ? '선택 해제' : '전체 선택'}</button></div></div>
-      <div class="field"><span class="label">문제 방향</span>${seg('dir', [['en', '단어 보고 뜻 맞히기'], ['ko', '뜻 보고 단어 맞히기'], ['mix', '섞어서']])}</div>
+      <div class="field"><span class="label">문제 방향</span>${seg('dir', [['en', '단어 보고 뜻 맞히기'], ['ko', '뜻 보고 단어 맞히기'], ['mix', '섞어서']].concat(TTS.ok ? [['listen', '듣고 뜻 맞히기']] : []))}</div>
+      ${TTS.ok ? `<div class="field"><span class="label">소리</span><div class="seg"><button data-auto="1" aria-pressed="${ttsOpt.auto}">문제 나올 때 읽어주기</button><button data-auto="0" aria-pressed="${!ttsOpt.auto}">끄기</button></div></div>` : ''}
       <div class="field"><span class="label">방식</span>${seg('type', [['mc', '4지선다', !mcOk], ['type', '직접 입력']])}</div>
       <div class="field"><span class="label">문항 수</span>${seg('count', [['all', '전체'], ['10', '10'], ['20', '20'], ['30', '30']])}</div>
       <div class="setupfoot"><span class="sub">${pool.length ? `${n}문제 · 순서는 매번 랜덤` : 'Day를 하나 이상 고르세요'}</span>
@@ -392,6 +537,7 @@ textarea{min-height:130px;font-family:var(--f-num);font-size:14px;resize:vertica
     app.querySelectorAll('[data-sel]').forEach(b => b.onclick = () => { const id = b.dataset.sel; setup.sel.has(id) ? setup.sel.delete(id) : setup.sel.add(id); render(); });
     $('#selAll').onclick = () => { if (setup.sel.size === list.length) setup.sel.clear(); else list.forEach(d => setup.sel.add(d.id)); render(); };
     app.querySelectorAll('[data-k]').forEach(b => b.onclick = () => { setup[b.dataset.k] = b.dataset.v; render(); });
+    app.querySelectorAll('[data-auto]').forEach(b => b.onclick = () => { ttsOpt.auto = b.dataset.auto === '1'; saveTts(); render(); });
     $('#start').onclick = () => startQuiz(poolFor(setup.sel));
   }
 
@@ -405,7 +551,7 @@ textarea{min-height:130px;font-family:var(--f-num);font-size:14px;resize:vertica
         const dir = setup.dir === 'mix' ? (Math.random() < .5 ? 'en' : 'ko') : setup.dir;
         let options = null;
         if (setup.type === 'mc') {
-          const key = dir === 'en' ? 'm' : 'w';
+          const key = dir === 'ko' ? 'w' : 'm';
           const seen = new Set([norm(w[key])]);
           const distract = [];
           for (const x of shuffle(all)) { const k = norm(x[key]); if (!seen.has(k)) { seen.add(k); distract.push(x[key]); } if (distract.length === 3) break; }
@@ -413,13 +559,13 @@ textarea{min-height:130px;font-family:var(--f-num);font-size:14px;resize:vertica
         }
         return { w, dir, options, answer: null, correct: null };
       }),
-      i: 0, done: false
+      i: 0, done: false, spoken: -1
     };
     view = 'quiz'; render();
   }
   const norm = s => String(s).toLowerCase().replace(/\([^)]*\)/g, '').replace(/[\s.,;:!?'"’~\-·]/g, '');
   function gradeTyped(item, input) {
-    const target = item.dir === 'en' ? item.w.m : item.w.w;
+    const target = item.dir === 'ko' ? item.w.w : item.w.m;
     const parts = target.split(/[,;/、]/).map(norm).filter(Boolean);
     const v = norm(input);
     return !!v && (parts.includes(v) || norm(target) === v);
@@ -427,7 +573,7 @@ textarea{min-height:130px;font-family:var(--f-num);font-size:14px;resize:vertica
   function answer(val) {
     const it = quiz.items[quiz.i]; if (it.answer !== null) return;
     it.answer = val;
-    it.correct = setup.type === 'mc' ? val === (it.dir === 'en' ? it.w.m : it.w.w) : gradeTyped(it, val);
+    it.correct = setup.type === 'mc' ? val === (it.dir === 'ko' ? it.w.w : it.w.m) : gradeTyped(it, val);
     render();
   }
   function next() {
@@ -436,8 +582,9 @@ textarea{min-height:130px;font-family:var(--f-num);font-size:14px;resize:vertica
   }
   function renderQuiz() {
     const it = quiz.items[quiz.i], total = quiz.items.length, answered = it.answer !== null;
-    const right = it.dir === 'en' ? it.w.m : it.w.w;
-    const q = it.dir === 'en' ? it.w.w : it.w.m;
+    const right = it.dir === 'ko' ? it.w.w : it.w.m;
+    const q = it.dir === 'ko' ? it.w.m : it.w.w;
+    const hideQ = it.dir === 'listen' && !answered;
     let body;
     if (it.options) {
       body = `<div class="opts">${it.options.map((o, k) => {
@@ -446,7 +593,7 @@ textarea{min-height:130px;font-family:var(--f-num);font-size:14px;resize:vertica
         return `<button class="${cls}" data-o="${k}" ${answered ? 'disabled' : ''}><span class="k">${k + 1}</span><span>${esc(o)}</span></button>`;
       }).join('')}</div>`;
     } else {
-      body = `<form class="answerrow" id="tf" autocomplete="off"><input type="text" id="ta" placeholder="${it.dir === 'en' ? '뜻을 입력' : '영어 단어를 입력'}" ${answered ? 'disabled' : ''} value="${answered ? esc(it.answer) : ''}" autocapitalize="off" spellcheck="false"><button class="btn primary" type="submit" ${answered ? 'disabled' : ''}>확인</button></form>`;
+      body = `<form class="answerrow" id="tf" autocomplete="off"><input type="text" id="ta" placeholder="${it.dir === 'ko' ? '영어 단어를 입력' : '뜻을 입력'}" ${answered ? 'disabled' : ''} value="${answered ? esc(it.answer) : ''}" autocapitalize="off" spellcheck="false"><button class="btn primary" type="submit" ${answered ? 'disabled' : ''}>확인</button></form>`;
     }
     let fb = '';
     if (answered) {
@@ -457,12 +604,14 @@ textarea{min-height:130px;font-family:var(--f-num);font-size:14px;resize:vertica
     app.innerHTML = `<section class="panel">
       <div class="qtop"><span class="num">${quiz.i + 1} / ${total}</span><span class="sub">${esc(it.w.day)}</span><button class="ghost" id="quit">그만하기</button></div>
       <div class="bar"><i style="width:${(quiz.i + (answered ? 1 : 0)) / total * 100}%"></i></div>
-      <div class="prompt"><span class="dir">${it.dir === 'en' ? '뜻은?' : '영어 단어는?'}</span><span class="q ${it.dir === 'ko' ? 'ko' : ''}">${esc(q)}</span></div>
+      <div class="prompt"><span class="dir">${it.dir === 'ko' ? '영어 단어는?' : it.dir === 'listen' ? '듣고 뜻을 고르세요' : '뜻은?'}</span><span class="q ${it.dir === 'ko' ? 'ko' : ''}">${hideQ ? '· · ·' : esc(q)}</span>${TTS.ok ? `<button class="spk" id="qSay" aria-label="문제 듣기" title="다시 듣기">${SPK}</button>` : ''}</div>
       ${body}${fb}
       <div class="qfoot"><span class="hint">${it.options ? '숫자키 1–4로 선택, ' : ''}Enter로 다음</span><button class="btn primary" id="next" ${answered ? '' : 'hidden'}>${quiz.i < total - 1 ? '다음' : '결과 보기'}</button></div>
     </section>`;
     app.querySelectorAll('[data-o]').forEach(b => b.onclick = () => answer(it.options[+b.dataset.o]));
     if ($('#tf')) { $('#tf').onsubmit = e => { e.preventDefault(); const v = $('#ta').value.trim(); if (v) answer(v); }; if (!answered) $('#ta').focus(); }
+    $('#qSay') && ($('#qSay').onclick = () => sayNow(q));
+    if (TTS.ok && quiz.spoken !== quiz.i && (ttsOpt.auto || it.dir === 'listen')) { quiz.spoken = quiz.i; sayNow(q); }
     $('#override') && ($('#override').onclick = () => { it.correct = true; render(); });
     $('#quit').onclick = () => { view = 'result'; quiz.items = quiz.items.slice(0, quiz.i + (answered ? 1 : 0)); render(); };
     if (answered) $('#next').focus();
@@ -483,11 +632,12 @@ textarea{min-height:130px;font-family:var(--f-num);font-size:14px;resize:vertica
         <button class="btn" id="again">같은 범위 다시</button>
         <button class="btn" id="toSetup">설정 바꾸기</button>
       </div>
-      ${wrong.length ? `<div class="field"><span class="label">틀린 단어</span><div class="list wronglist">${wrong.map(x => `<div class="row"><span class="w">${esc(x.w.w)}</span><span class="m">${esc(x.w.m)}</span><span class="sub tag">${esc(x.w.day)}</span></div>`).join('')}</div></div>` : (items.length ? `<div class="fb ok"><b>전부 맞혔어요</b></div>` : '')}
+      ${wrong.length ? `<div class="field"><span class="label">틀린 단어</span><div class="list wronglist">${wrong.map(x => `<div class="row"><span class="w">${esc(x.w.w)}</span><span class="m">${esc(x.w.m)}</span><span class="sub tag">${TTS.ok ? `<button class="spk" data-rs="${esc(x.w.w)}" aria-label="${esc(x.w.w)} 듣기">${SPK}</button>` : ''}${esc(x.w.day)}</span></div>`).join('')}</div></div>` : (items.length ? `<div class="fb ok"><b>전부 맞혔어요</b></div>` : '')}
     </section>`;
     $('#retryWrong') && ($('#retryWrong').onclick = () => startQuiz(wrong.map(x => x.w), true));
     $('#again').onclick = () => startQuiz(poolFor(setup.sel));
     $('#toSetup').onclick = () => { view = 'setup'; render(); };
+    app.querySelectorAll('[data-rs]').forEach(b => b.onclick = () => sayNow(b.dataset.rs));
   }
 
   document.addEventListener('keydown', e => {
@@ -497,6 +647,7 @@ textarea{min-height:130px;font-family:var(--f-num);font-size:14px;resize:vertica
 
   // ---------- tabs ----------
   function switchTab(t) {
+    stopPlayer(); if (TTS.ok) speechSynthesis.cancel();
     view = t === 'words' ? 'words' : 'setup';
     $('#tab-words').setAttribute('aria-selected', t === 'words');
     $('#tab-test').setAttribute('aria-selected', t !== 'words');
