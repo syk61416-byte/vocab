@@ -1,0 +1,524 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<title>Day별 단어장</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,500;6..72,600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: single column workbench — day index on top, active day's word list below; quiz replaces it with one card at a time */
+:root{
+  --bg:#EEF2F3; --surface:#FFFFFF; --line:#D3DCDF; --ink:#16252B; --muted:#5B6D74;
+  --accent:#1F5F73; --accent-ink:#FFFFFF; --accent-soft:#DCEAEE;
+  --ok:#2C7A4B; --ok-soft:#DFF1E5; --bad:#B03A2E; --bad-soft:#F8E1DE;
+  --f-word:"Newsreader", Georgia, "Times New Roman", serif;
+  --f-ui:"IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --f-num:"IBM Plex Mono", ui-monospace, Menlo, monospace;
+  --r:10px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0F171A; --surface:#172227; --line:#2A3A40; --ink:#E4ECEE; --muted:#93A6AD;
+  --accent:#6FB3C6; --accent-ink:#0B1416; --accent-soft:#1E3640;
+  --ok:#6CC992; --ok-soft:#18332A; --bad:#EE8A7E; --bad-soft:#3A1F1C; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0F171A; --surface:#172227; --line:#2A3A40; --ink:#E4ECEE; --muted:#93A6AD;
+  --accent:#6FB3C6; --accent-ink:#0B1416; --accent-soft:#1E3640;
+  --ok:#6CC992; --ok-soft:#18332A; --bad:#EE8A7E; --bad-soft:#3A1F1C; color-scheme:dark}
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-ui);font-size:15px;line-height:1.55}
+.wrap{max-width:760px;margin:0 auto;padding-block:20px 48px;padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px));display:flex;flex-direction:column;gap:18px}
+header{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
+h1{font-size:22px;margin:0;letter-spacing:-.01em}
+.sub{color:var(--muted);font-size:13px}
+.tabs{display:flex;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:3px}
+.tabs button{border:0;background:none;color:var(--muted);font:600 14px var(--f-ui);padding:7px 16px;border-radius:999px;cursor:pointer}
+.tabs button[aria-selected="true"]{background:var(--accent);color:var(--accent-ink)}
+button{font-family:var(--f-ui)}
+button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn{border:1px solid var(--line);background:var(--surface);color:var(--ink);font:500 14px var(--f-ui);padding:8px 14px;border-radius:8px;cursor:pointer}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.btn.danger{color:var(--bad)}
+.btn.danger.armed{background:var(--bad);border-color:var(--bad);color:var(--surface)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.sm{padding:5px 10px;font-size:13px}
+.ghost{border:0;background:none;color:var(--muted);cursor:pointer;font-size:13px;padding:4px 6px;border-radius:6px}
+.ghost:hover{color:var(--ink);background:var(--accent-soft)}
+.label{font-size:12px;font-weight:600;color:var(--muted);letter-spacing:.06em;text-transform:uppercase}
+.num{font-family:var(--f-num);font-variant-numeric:tabular-nums}
+
+/* day index */
+.days{display:flex;flex-wrap:wrap;gap:8px}
+.chip{display:inline-flex;align-items:baseline;gap:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:8px;padding:7px 12px;font:600 14px var(--f-ui);cursor:pointer}
+.chip .num{font-size:12px;color:var(--muted);font-weight:500}
+.chip[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);color:var(--ink)}
+.chip.add{border-style:dashed;color:var(--muted);font-weight:500}
+
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:18px;display:flex;flex-direction:column;gap:16px}
+.dayhead{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.dayname{font:700 20px var(--f-ui);border:1px solid transparent;background:none;color:var(--ink);padding:2px 6px;margin-left:-6px;border-radius:6px;width:12ch;min-width:0;flex:1 1 140px}
+.dayname:hover{border-color:var(--line)}
+.dayhead .spacer{flex:1}
+.addform{display:grid;grid-template-columns:1fr 1.4fr auto;gap:8px}
+input[type=text],textarea{width:100%;min-width:0;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:15px var(--f-ui);padding:9px 11px;border-radius:8px}
+textarea{min-height:130px;font-family:var(--f-num);font-size:14px;resize:vertical}
+.bulk{display:flex;flex-direction:column;gap:8px}
+.hint{font-size:13px;color:var(--muted)}
+.list{border-top:1px solid var(--line)}
+.row{display:grid;grid-template-columns:2.2em minmax(0,1fr) minmax(0,1.4fr) auto;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid var(--line)}
+.row .idx{color:var(--muted);font-size:12px}
+.row .w{font:600 18px var(--f-word);overflow-wrap:anywhere}
+.row .m{overflow-wrap:anywhere}
+.row .acts{display:flex;gap:2px}
+.row.editing{grid-template-columns:2.2em minmax(0,1fr) minmax(0,1.4fr) auto}
+.empty{text-align:center;padding:28px 12px;color:var(--muted);display:flex;flex-direction:column;gap:12px;align-items:center}
+.empty strong{color:var(--ink);font-size:16px}
+.empty .btns{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+
+/* test setup */
+.field{display:flex;flex-direction:column;gap:8px}
+.seg{display:flex;flex-wrap:wrap;gap:6px}
+.seg button{border:1px solid var(--line);background:var(--surface);color:var(--ink);font:500 14px var(--f-ui);padding:7px 12px;border-radius:8px;cursor:pointer}
+.seg button[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);font-weight:600}
+.setupfoot{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:14px}
+
+/* quiz */
+.qtop{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.bar{height:4px;background:var(--line);border-radius:4px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent);transition:width .2s}
+.prompt{text-align:center;padding:26px 8px 18px;display:flex;flex-direction:column;gap:6px}
+.prompt .dir{font-size:12px;color:var(--muted)}
+.prompt .q{font:600 clamp(28px,7vw,42px)/1.2 var(--f-word);overflow-wrap:anywhere;text-wrap:balance}
+.prompt .q.ko{font:700 clamp(22px,5.5vw,30px)/1.35 var(--f-ui)}
+.opts{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.opt{display:flex;gap:10px;align-items:flex-start;text-align:left;border:1px solid var(--line);background:var(--surface);color:var(--ink);font:500 15px var(--f-ui);padding:12px;border-radius:8px;cursor:pointer;min-width:0;overflow-wrap:anywhere}
+.opt .k{font:500 12px var(--f-num);color:var(--muted);padding-top:3px}
+.opt.en{font:600 17px var(--f-word)}
+.opt:hover:not(:disabled){border-color:var(--accent)}
+.opt:disabled{cursor:default}
+.opt.right{border-color:var(--ok);background:var(--ok-soft)}
+.opt.wrong{border-color:var(--bad);background:var(--bad-soft)}
+.answerrow{display:flex;gap:8px}
+.fb{border-radius:8px;padding:12px 14px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.fb.ok{background:var(--ok-soft);color:var(--ok)}
+.fb.no{background:var(--bad-soft);color:var(--bad)}
+.fb .ans{color:var(--ink)}
+.fb b{font-weight:700}
+.qfoot{display:flex;justify-content:space-between;align-items:center;gap:8px}
+
+/* result */
+.score{display:flex;align-items:baseline;gap:10px}
+.score .big{font:500 44px var(--f-num)}
+.score .of{color:var(--muted)}
+.wronglist .row{grid-template-columns:minmax(0,1fr) minmax(0,1.4fr) auto}
+.resbtns{display:flex;gap:8px;flex-wrap:wrap}
+.status{font-size:12px;color:var(--muted)}
+.backup{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:14px}
+.vh{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;pointer-events:none}
+.wrap,.backup{min-width:0}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom, 0px));background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:8px;font-size:14px;max-width:calc(100% - 32px)}
+
+@media (max-width:540px){
+  .addform{grid-template-columns:1fr 1fr}
+  .addform .btn{grid-column:1 / -1}
+  .opts{grid-template-columns:1fr}
+  .row{grid-template-columns:1.8em minmax(0,1fr) auto;row-gap:2px}
+  .row .m{grid-column:2;grid-row:2}
+  .row .acts{grid-column:3;grid-row:1 / span 2}
+  .wronglist .row{grid-template-columns:minmax(0,1fr) auto}
+  .wronglist .row .m{grid-column:1;grid-row:2}
+  .wronglist .row .tag{grid-column:2;grid-row:1 / span 2}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Day별 단어장</h1>
+      <div class="status" id="status">불러오는 중…</div>
+    </div>
+    <div class="tabs" role="tablist">
+      <button role="tab" id="tab-words" aria-selected="true">단어장</button>
+      <button role="tab" id="tab-test" aria-selected="false">테스트</button>
+    </div>
+  </header>
+  <main id="app"></main>
+  <footer class="backup">
+    <span class="hint">단어는 이 브라우저에만 저장돼요. 브라우저 데이터를 지우면 사라지니 가끔 백업 파일을 받아 두세요.</span>
+    <span class="resbtns"><button class="btn sm" id="exportBtn">백업 파일 받기</button><button class="btn sm" id="importBtn" type="button">백업 불러오기</button><input type="file" id="importFile" class="vh" tabindex="-1" aria-hidden="true"></span>
+  </footer>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+(() => {
+  // ---------- state ----------
+  let days = [];            // [{id,name,order,words:[{id,w,m}]}]
+  let view = 'words';       // words | setup | quiz | result
+  let curDay = null;
+  let editingWord = null;
+  let bulkOpen = false;
+  let armedDelete = null;
+  const setup = { sel: new Set(), dir: 'en', type: 'mc', count: 'all' };
+  let quiz = null;
+
+  const $ = s => document.querySelector(s);
+  const app = $('#app');
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const uid = p => p + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  const shuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  const sorted = () => days.slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+
+  function toast(msg) {
+    const t = $('#toast'); t.textContent = msg; t.hidden = false;
+    clearTimeout(toast._t); toast._t = setTimeout(() => t.hidden = true, 2200);
+  }
+
+  // ---------- storage (localStorage only) ----------
+  // 저장 형식: localStorage['vocab-days-v1'] = JSON 문자열 { days:[...] } 
+  const LKEY = 'vocab-days-v1', BKEY = 'vocab-last-backup';
+  let storageOk = true;
+
+  function loadLocal() {
+    try {
+      const raw = localStorage.getItem(LKEY);
+      if (raw) { const p = JSON.parse(raw); days = Array.isArray(p) ? p : (p.days || []); }
+    } catch (e) { storageOk = false; }
+  }
+  function saveLocal() {
+    try { localStorage.setItem(LKEY, JSON.stringify({ version: 1, days })); storageOk = true; }
+    catch (e) { storageOk = false; toast('브라우저에 저장하지 못했어요. 지금 바로 백업 파일을 받아 두세요.'); }
+    setStatus();
+  }
+  const saveDay = () => saveLocal();
+  const removeDay = () => saveLocal();
+  function lastBackup() { try { return localStorage.getItem(BKEY); } catch (e) { return null; } }
+  function fmtDate(iso) { const d = new Date(iso); return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; }
+  function setStatus() {
+    const n = days.reduce((s, d) => s + d.words.length, 0);
+    const lb = lastBackup();
+    $('#status').textContent = (storageOk ? '이 브라우저에 자동 저장' : '저장 안 됨 (브라우저 저장소 사용 불가)') + ` · Day ${days.length}개 · 단어 ${n}개 · 마지막 백업 ${lb ? fmtDate(lb) : '없음'}`;
+  }
+  // 다른 탭에서 수정하면 이 탭도 갱신
+  window.addEventListener('storage', e => { if (e.key === LKEY) { loadLocal(); setStatus(); if (view === 'words' || view === 'setup') render(); } });
+
+  // ---------- backup ----------
+  function exportBackup() {
+    const now = new Date();
+    const data = JSON.stringify({ app: 'vocab-days', version: 1, exportedAt: now.toISOString(), days }, null, 2);
+    const blob = new Blob([data], { type: 'application/json' });
+    const a = document.createElement('a');
+    const p = n => String(n).padStart(2, '0');
+    a.href = URL.createObjectURL(blob);
+    a.download = `vocab-backup-${now.getFullYear()}${p(now.getMonth() + 1)}${p(now.getDate())}-${p(now.getHours())}${p(now.getMinutes())}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    try { localStorage.setItem(BKEY, now.toISOString()); } catch (e) {}
+    setStatus(); toast('백업 파일을 저장했어요');
+  }
+  let importing = null;
+  function validDays(p) {
+    const arr = Array.isArray(p) ? p : p && p.days;
+    if (!Array.isArray(arr)) return null;
+    return arr.filter(d => d && Array.isArray(d.words)).map((d, i) => ({
+      id: String(d.id || uid('d')), name: String(d.name || `Day ${i + 1}`), order: Number(d.order) || i + 1,
+      words: d.words.filter(w => w && w.w && w.m).map(w => ({ id: String(w.id || uid('w')), w: String(w.w), m: String(w.m) }))
+    }));
+  }
+  function readImport(file) {
+    const r = new FileReader();
+    r.onload = () => {
+      let parsed; try { parsed = validDays(JSON.parse(String(r.result).replace(/^\uFEFF/, '').trim())); } catch (e) { parsed = null; }
+      if (!parsed) { toast('단어장 백업 파일이 아니에요'); return; }
+      importing = parsed; view = 'import'; render();
+    };
+    r.readAsText(file, 'utf-8');
+  }
+  function applyImport(how) {
+    if (how === 'replace') days = importing;
+    else {
+      const byName = new Map(days.map(d => [d.name, d]));
+      let order = days.reduce((m, d) => Math.max(m, d.order ?? 0), 0);
+      for (const d of importing) {
+        const t = byName.get(d.name);
+        if (t) { const seen = new Set(t.words.map(w => w.w.toLowerCase() + '\u0000' + w.m)); for (const w of d.words) if (!seen.has(w.w.toLowerCase() + '\u0000' + w.m)) t.words.push({ ...w, id: uid('w') }); }
+        else days.push({ ...d, id: uid('d'), order: ++order });
+      }
+    }
+    importing = null; curDay = null; saveLocal(); view = 'words'; render(); toast('백업을 불러왔어요');
+  }
+  function renderImport() {
+    const nw = importing.reduce((s, d) => s + d.words.length, 0);
+    app.innerHTML = `<section class="panel">
+      <strong>백업 불러오기</strong>
+      <div>파일에 Day ${importing.length}개, 단어 ${nw}개가 있어요. 지금 단어장에는 Day ${days.length}개가 있어요.</div>
+      <div class="hint">합치기: 같은 이름의 Day는 단어를 더하고(중복 제외), 없는 Day는 새로 만듭니다. 덮어쓰기: 지금 단어장을 지우고 파일 내용으로 바꿉니다.</div>
+      <div class="resbtns"><button class="btn primary" id="imMerge">합치기</button><button class="btn danger" id="imReplace">덮어쓰기</button><button class="btn" id="imCancel">취소</button></div>
+    </section>`;
+    $('#imMerge').onclick = () => applyImport('merge');
+    $('#imReplace').onclick = () => applyImport('replace');
+    $('#imCancel').onclick = () => { importing = null; view = 'words'; render(); };
+  }
+
+  // ---------- mutations ----------
+  function addDay(name) {
+    const order = days.reduce((m, d) => Math.max(m, d.order ?? 0), 0) + 1;
+    const d = { id: uid('d'), name: name || `Day ${days.length + 1}`, order, words: [] };
+    days.push(d); curDay = d.id; saveDay(d); setStatus(); return d;
+  }
+  function parseBulk(text) {
+    const out = [];
+    for (let line of text.split(/\r?\n/)) {
+      line = line.trim(); if (!line) continue;
+      let m = line.match(/^(.+?)\s*(?:\t| - | – | — |:|=|,)\s*(.+)$/) || line.match(/^([A-Za-z][A-Za-z'’\-\. ]*?)\s+(.+)$/);
+      if (m) out.push({ w: m[1].trim(), m: m[2].trim() });
+    }
+    return out;
+  }
+  const SAMPLE = [
+    ['abundant','풍부한'],['reluctant','꺼리는, 마지못한'],['inevitable','피할 수 없는'],['alleviate','완화하다'],
+    ['compensate','보상하다'],['diligent','부지런한'],['obsolete','쓸모없게 된, 구식의'],['scrutinize','면밀히 조사하다'],
+    ['deteriorate','악화되다'],['feasible','실현 가능한']
+  ];
+
+  // ---------- render: word book ----------
+  function renderWords() {
+    const list = sorted();
+    if (!list.length) {
+      app.innerHTML = `<div class="panel"><div class="empty">
+        <strong>아직 Day가 없어요</strong>
+        <div>Day를 만들고 단어와 뜻을 적으면 테스트 탭에서 랜덤 퀴즈로 풀 수 있어요.</div>
+        <div class="btns"><button class="btn primary" id="mk1">Day 1 만들기</button><button class="btn" id="mkSample">예시 단어 10개로 시작</button></div>
+      </div></div>`;
+      $('#mk1').onclick = () => { addDay('Day 1'); render(); };
+      $('#mkSample').onclick = () => { const d = addDay('Day 1 (예시)'); d.words = SAMPLE.map(([w, m]) => ({ id: uid('w'), w, m })); saveDay(d); setStatus(); render(); };
+      return;
+    }
+    if (!curDay || !days.find(d => d.id === curDay)) curDay = list[0].id;
+    const day = days.find(d => d.id === curDay);
+    const chips = list.map(d => `<button class="chip" aria-pressed="${d.id === curDay}" data-day="${d.id}">${esc(d.name)} <span class="num">${d.words.length}</span></button>`).join('');
+    const rows = day.words.map((x, i) => editingWord === x.id
+      ? `<div class="row editing" data-w="${x.id}"><span class="idx num">${i + 1}</span><input type="text" id="ew-${x.id}" value="${esc(x.w)}" aria-label="단어"><input type="text" id="em-${x.id}" value="${esc(x.m)}" aria-label="뜻"><span class="acts"><button class="ghost" data-save="${x.id}">저장</button><button class="ghost" data-cancel>취소</button></span></div>`
+      : `<div class="row" data-w="${x.id}"><span class="idx num">${i + 1}</span><span class="w">${esc(x.w)}</span><span class="m">${esc(x.m)}</span><span class="acts"><button class="ghost" data-edit="${x.id}">수정</button><button class="ghost" data-del="${x.id}">삭제</button></span></div>`).join('');
+    app.innerHTML = `
+      <div class="field"><span class="label">Day</span><div class="days">${chips}<button class="chip add" id="addDay">+ Day 추가</button></div></div>
+      <section class="panel">
+        <div class="dayhead">
+          <input class="dayname" id="dayname" value="${esc(day.name)}" aria-label="Day 이름">
+          <span class="sub num">${day.words.length}단어</span>
+          <span class="spacer"></span>
+          <button class="btn sm" id="testThis" ${day.words.length ? '' : 'disabled'}>이 Day 테스트</button>
+          <button class="btn sm danger ${armedDelete === day.id ? 'armed' : ''}" id="delDay">${armedDelete === day.id ? '정말 삭제' : 'Day 삭제'}</button>
+        </div>
+        <form class="addform" id="addform" autocomplete="off">
+          <input type="text" id="nw" placeholder="단어 (예: abundant)" aria-label="단어">
+          <input type="text" id="nm" placeholder="뜻 (예: 풍부한)" aria-label="뜻">
+          <button class="btn primary" type="submit">추가</button>
+        </form>
+        <div class="bulk">
+          <button class="ghost" id="bulkToggle" style="align-self:flex-start">${bulkOpen ? '여러 개 붙여넣기 닫기' : '여러 개 한 번에 붙여넣기'}</button>
+          <div id="bulkBox" ${bulkOpen ? '' : 'hidden'} class="bulk">
+            <textarea id="bulkText" placeholder="abundant - 풍부한&#10;reluctant, 꺼리는&#10;inevitable	피할 수 없는"></textarea>
+            <div class="hint">한 줄에 하나씩. 단어와 뜻은 탭, " - ", 쉼표, 콜론 중 하나로 구분하세요. 엑셀에서 두 칸을 복사해 붙여넣어도 됩니다.</div>
+            <div><button class="btn" id="bulkAdd">붙여넣은 단어 추가</button></div>
+          </div>
+        </div>
+        <div class="list">${rows || `<div class="empty">이 Day에는 아직 단어가 없어요. 위에서 추가하세요.</div>`}</div>
+      </section>`;
+
+    app.querySelectorAll('[data-day]').forEach(b => b.onclick = () => { curDay = b.dataset.day; editingWord = null; armedDelete = null; render(); });
+    $('#addDay').onclick = () => { addDay(); editingWord = null; render(); $('#nw')?.focus(); };
+    const dn = $('#dayname');
+    dn.onchange = () => { const v = dn.value.trim(); if (v && v !== day.name) { day.name = v; saveDay(day); render(); } else dn.value = day.name; };
+    dn.onkeydown = e => { if (e.key === 'Enter') dn.blur(); };
+    $('#delDay').onclick = () => {
+      if (armedDelete !== day.id) { armedDelete = day.id; render(); setTimeout(() => { if (armedDelete === day.id) { armedDelete = null; if (view === 'words') render(); } }, 3500); return; }
+      days = days.filter(d => d.id !== day.id); setup.sel.delete(day.id); removeDay(day.id); armedDelete = null; curDay = null; setStatus(); render(); toast(`${day.name} 삭제됨`);
+    };
+    $('#testThis').onclick = () => { setup.sel = new Set([day.id]); switchTab('test'); };
+    $('#addform').onsubmit = e => {
+      e.preventDefault();
+      const w = $('#nw').value.trim(), m = $('#nm').value.trim();
+      if (!w || !m) { toast('단어와 뜻을 모두 적어 주세요'); (w ? $('#nm') : $('#nw')).focus(); return; }
+      day.words.push({ id: uid('w'), w, m }); saveDay(day); setStatus(); render(); $('#nw').focus();
+    };
+    $('#nw').onkeydown = e => { if (e.key === 'Enter' && !$('#nm').value.trim()) { e.preventDefault(); $('#nm').focus(); } };
+    $('#bulkToggle').onclick = () => { bulkOpen = !bulkOpen; render(); if (bulkOpen) $('#bulkText').focus(); };
+    $('#bulkAdd') && ($('#bulkAdd').onclick = () => {
+      const items = parseBulk($('#bulkText').value);
+      if (!items.length) { toast('인식된 줄이 없어요. "단어 - 뜻" 형식인지 확인해 주세요'); return; }
+      items.forEach(x => day.words.push({ id: uid('w'), ...x })); saveDay(day); setStatus(); bulkOpen = false; render(); toast(`${items.length}개 추가됨`);
+    });
+    app.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => { editingWord = b.dataset.edit; render(); $('#ew-' + editingWord)?.focus(); });
+    app.querySelectorAll('[data-cancel]').forEach(b => b.onclick = () => { editingWord = null; render(); });
+    app.querySelectorAll('[data-save]').forEach(b => {
+      const id = b.dataset.save, go = () => { const x = day.words.find(x => x.id === id); const w = $('#ew-' + id).value.trim(), m = $('#em-' + id).value.trim(); if (!w || !m) { toast('비워둘 수 없어요'); return; } x.w = w; x.m = m; editingWord = null; saveDay(day); render(); };
+      b.onclick = go; [$('#ew-' + id), $('#em-' + id)].forEach(i => i.onkeydown = e => { if (e.key === 'Enter') go(); if (e.key === 'Escape') { editingWord = null; render(); } });
+    });
+    app.querySelectorAll('[data-del]').forEach(b => b.onclick = () => { const i = day.words.findIndex(x => x.id === b.dataset.del); const [x] = day.words.splice(i, 1); saveDay(day); setStatus(); render(); toast(`"${x.w}" 삭제됨`); });
+  }
+
+  // ---------- render: test setup ----------
+  function poolFor(sel) { const out = []; for (const d of sorted()) if (sel.has(d.id)) for (const w of d.words) out.push({ ...w, day: d.name }); return out; }
+  function renderSetup() {
+    const list = sorted().filter(d => d.words.length);
+    for (const id of [...setup.sel]) if (!list.find(d => d.id === id)) setup.sel.delete(id);
+    if (!list.length) {
+      app.innerHTML = `<div class="panel"><div class="empty"><strong>테스트할 단어가 없어요</strong><div>단어장 탭에서 Day를 만들고 단어를 추가하세요.</div><button class="btn primary" id="go">단어장으로</button></div></div>`;
+      $('#go').onclick = () => switchTab('words'); return;
+    }
+    const pool = poolFor(setup.sel);
+    const total = days.reduce((s, d) => s + d.words.length, 0);
+    const mcOk = total >= 2;
+    if (!mcOk && setup.type === 'mc') setup.type = 'type';
+    const n = setup.count === 'all' ? pool.length : Math.min(pool.length, +setup.count);
+    const seg = (key, opts) => `<div class="seg">${opts.map(([v, l, dis]) => `<button data-k="${key}" data-v="${v}" aria-pressed="${setup[key] === v}" ${dis ? 'disabled' : ''}>${l}</button>`).join('')}</div>`;
+    app.innerHTML = `<section class="panel">
+      <div class="field"><span class="label">범위</span>
+        <div class="days">${list.map(d => `<button class="chip" data-sel="${d.id}" aria-pressed="${setup.sel.has(d.id)}">${esc(d.name)} <span class="num">${d.words.length}</span></button>`).join('')}
+        <button class="chip add" id="selAll">${setup.sel.size === list.length ? '선택 해제' : '전체 선택'}</button></div></div>
+      <div class="field"><span class="label">문제 방향</span>${seg('dir', [['en', '단어 보고 뜻 맞히기'], ['ko', '뜻 보고 단어 맞히기'], ['mix', '섞어서']])}</div>
+      <div class="field"><span class="label">방식</span>${seg('type', [['mc', '4지선다', !mcOk], ['type', '직접 입력']])}</div>
+      <div class="field"><span class="label">문항 수</span>${seg('count', [['all', '전체'], ['10', '10'], ['20', '20'], ['30', '30']])}</div>
+      <div class="setupfoot"><span class="sub">${pool.length ? `${n}문제 · 순서는 매번 랜덤` : 'Day를 하나 이상 고르세요'}</span>
+        <button class="btn primary" id="start" ${pool.length ? '' : 'disabled'}>시작</button></div>
+    </section>`;
+    app.querySelectorAll('[data-sel]').forEach(b => b.onclick = () => { const id = b.dataset.sel; setup.sel.has(id) ? setup.sel.delete(id) : setup.sel.add(id); render(); });
+    $('#selAll').onclick = () => { if (setup.sel.size === list.length) setup.sel.clear(); else list.forEach(d => setup.sel.add(d.id)); render(); };
+    app.querySelectorAll('[data-k]').forEach(b => b.onclick = () => { setup[b.dataset.k] = b.dataset.v; render(); });
+    $('#start').onclick = () => startQuiz(poolFor(setup.sel));
+  }
+
+  // ---------- quiz ----------
+  function startQuiz(pool, limitAll) {
+    let items = shuffle(pool);
+    if (!limitAll && setup.count !== 'all') items = items.slice(0, +setup.count);
+    const all = days.flatMap(d => d.words);
+    quiz = {
+      items: items.map(w => {
+        const dir = setup.dir === 'mix' ? (Math.random() < .5 ? 'en' : 'ko') : setup.dir;
+        let options = null;
+        if (setup.type === 'mc') {
+          const key = dir === 'en' ? 'm' : 'w';
+          const seen = new Set([norm(w[key])]);
+          const distract = [];
+          for (const x of shuffle(all)) { const k = norm(x[key]); if (!seen.has(k)) { seen.add(k); distract.push(x[key]); } if (distract.length === 3) break; }
+          options = shuffle([w[key], ...distract]);
+        }
+        return { w, dir, options, answer: null, correct: null };
+      }),
+      i: 0, done: false
+    };
+    view = 'quiz'; render();
+  }
+  const norm = s => String(s).toLowerCase().replace(/\([^)]*\)/g, '').replace(/[\s.,;:!?'"’~\-·]/g, '');
+  function gradeTyped(item, input) {
+    const target = item.dir === 'en' ? item.w.m : item.w.w;
+    const parts = target.split(/[,;/、]/).map(norm).filter(Boolean);
+    const v = norm(input);
+    return !!v && (parts.includes(v) || norm(target) === v);
+  }
+  function answer(val) {
+    const it = quiz.items[quiz.i]; if (it.answer !== null) return;
+    it.answer = val;
+    it.correct = setup.type === 'mc' ? val === (it.dir === 'en' ? it.w.m : it.w.w) : gradeTyped(it, val);
+    render();
+  }
+  function next() {
+    if (quiz.i < quiz.items.length - 1) { quiz.i++; render(); }
+    else { view = 'result'; render(); }
+  }
+  function renderQuiz() {
+    const it = quiz.items[quiz.i], total = quiz.items.length, answered = it.answer !== null;
+    const right = it.dir === 'en' ? it.w.m : it.w.w;
+    const q = it.dir === 'en' ? it.w.w : it.w.m;
+    let body;
+    if (it.options) {
+      body = `<div class="opts">${it.options.map((o, k) => {
+        let cls = it.dir === 'ko' ? 'opt en' : 'opt';
+        if (answered && o === right) cls += ' right'; else if (answered && o === it.answer) cls += ' wrong';
+        return `<button class="${cls}" data-o="${k}" ${answered ? 'disabled' : ''}><span class="k">${k + 1}</span><span>${esc(o)}</span></button>`;
+      }).join('')}</div>`;
+    } else {
+      body = `<form class="answerrow" id="tf" autocomplete="off"><input type="text" id="ta" placeholder="${it.dir === 'en' ? '뜻을 입력' : '영어 단어를 입력'}" ${answered ? 'disabled' : ''} value="${answered ? esc(it.answer) : ''}" autocapitalize="off" spellcheck="false"><button class="btn primary" type="submit" ${answered ? 'disabled' : ''}>확인</button></form>`;
+    }
+    let fb = '';
+    if (answered) {
+      fb = it.correct
+        ? `<div class="fb ok"><b>정답</b><span class="ans">${esc(it.w.w)} · ${esc(it.w.m)}</span></div>`
+        : `<div class="fb no"><span><b>오답</b> <span class="ans">정답: ${esc(right)}</span></span>${setup.type === 'type' ? '<button class="btn sm" id="override">맞은 걸로 처리</button>' : ''}</div>`;
+    }
+    app.innerHTML = `<section class="panel">
+      <div class="qtop"><span class="num">${quiz.i + 1} / ${total}</span><span class="sub">${esc(it.w.day)}</span><button class="ghost" id="quit">그만하기</button></div>
+      <div class="bar"><i style="width:${(quiz.i + (answered ? 1 : 0)) / total * 100}%"></i></div>
+      <div class="prompt"><span class="dir">${it.dir === 'en' ? '뜻은?' : '영어 단어는?'}</span><span class="q ${it.dir === 'ko' ? 'ko' : ''}">${esc(q)}</span></div>
+      ${body}${fb}
+      <div class="qfoot"><span class="hint">${it.options ? '숫자키 1–4로 선택, ' : ''}Enter로 다음</span><button class="btn primary" id="next" ${answered ? '' : 'hidden'}>${quiz.i < total - 1 ? '다음' : '결과 보기'}</button></div>
+    </section>`;
+    app.querySelectorAll('[data-o]').forEach(b => b.onclick = () => answer(it.options[+b.dataset.o]));
+    if ($('#tf')) { $('#tf').onsubmit = e => { e.preventDefault(); const v = $('#ta').value.trim(); if (v) answer(v); }; if (!answered) $('#ta').focus(); }
+    $('#override') && ($('#override').onclick = () => { it.correct = true; render(); });
+    $('#quit').onclick = () => { view = 'result'; quiz.items = quiz.items.slice(0, quiz.i + (answered ? 1 : 0)); render(); };
+    if (answered) $('#next').focus();
+    $('#next').onclick = next;
+  }
+  document.addEventListener('keydown', e => {
+    if (view !== 'quiz' || !quiz) return;
+    const it = quiz.items[quiz.i];
+    if (it.options && it.answer === null && /^[1-4]$/.test(e.key) && document.activeElement?.tagName !== 'INPUT') { const o = it.options[+e.key - 1]; if (o !== undefined) answer(o); }
+  });
+
+  function renderResult() {
+    const items = quiz.items, ok = items.filter(x => x.correct).length, wrong = items.filter(x => x.correct === false);
+    app.innerHTML = `<section class="panel">
+      <div class="score"><span class="big">${ok}</span><span class="of num">/ ${items.length}</span><span class="sub">${items.length ? Math.round(ok / items.length * 100) + '%' : ''}</span></div>
+      <div class="resbtns">
+        ${wrong.length ? `<button class="btn primary" id="retryWrong">틀린 ${wrong.length}개만 다시</button>` : ''}
+        <button class="btn" id="again">같은 범위 다시</button>
+        <button class="btn" id="toSetup">설정 바꾸기</button>
+      </div>
+      ${wrong.length ? `<div class="field"><span class="label">틀린 단어</span><div class="list wronglist">${wrong.map(x => `<div class="row"><span class="w">${esc(x.w.w)}</span><span class="m">${esc(x.w.m)}</span><span class="sub tag">${esc(x.w.day)}</span></div>`).join('')}</div></div>` : (items.length ? `<div class="fb ok"><b>전부 맞혔어요</b></div>` : '')}
+    </section>`;
+    $('#retryWrong') && ($('#retryWrong').onclick = () => startQuiz(wrong.map(x => x.w), true));
+    $('#again').onclick = () => startQuiz(poolFor(setup.sel));
+    $('#toSetup').onclick = () => { view = 'setup'; render(); };
+  }
+
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    if (view === 'quiz' && quiz.items[quiz.i].answer !== null && document.activeElement?.id !== 'next') { e.preventDefault(); next(); }
+  });
+
+  // ---------- tabs ----------
+  function switchTab(t) {
+    view = t === 'words' ? 'words' : 'setup';
+    $('#tab-words').setAttribute('aria-selected', t === 'words');
+    $('#tab-test').setAttribute('aria-selected', t !== 'words');
+    render();
+  }
+  $('#exportBtn').onclick = exportBackup;
+  $('#importBtn').onclick = () => $('#importFile').click();
+  $('#importFile').onchange = e => { const f = e.target.files[0]; if (f) readImport(f); e.target.value = ''; };
+  $('#tab-words').onclick = () => switchTab('words');
+  $('#tab-test').onclick = () => switchTab('test');
+
+  function render() {
+    if (view === 'words') renderWords();
+    else if (view === 'setup') renderSetup();
+    else if (view === 'import') renderImport();
+    else if (view === 'quiz') renderQuiz();
+    else renderResult();
+  }
+
+  loadLocal(); setStatus(); render();
+})();
+</script>
+
+</body>
+</html>
