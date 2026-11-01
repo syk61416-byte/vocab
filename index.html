@@ -73,6 +73,17 @@ textarea{min-height:130px;font-family:var(--f-num);font-size:14px;resize:vertica
 .row .w{font:600 18px var(--f-word);overflow-wrap:anywhere}
 .row .m{overflow-wrap:anywhere}
 .row .acts{display:flex;gap:2px}
+.chk{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border:0;background:none;padding:0;cursor:pointer;border-radius:6px;flex:none}
+.chk .box{width:19px;height:19px;border:2px solid var(--muted);border-radius:5px;display:flex;align-items:center;justify-content:center;color:transparent;transition:background .12s,border-color .12s}
+.chk .box svg{width:13px;height:13px}
+.chk:hover .box{border-color:var(--accent)}
+.chk[aria-pressed="true"] .box{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.qchk{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--surface);color:var(--muted);font:600 13px var(--f-ui);padding:4px 10px 4px 6px;border-radius:999px;cursor:pointer}
+.qchk .box{width:17px;height:17px;border:2px solid var(--muted);border-radius:5px;display:flex;align-items:center;justify-content:center;color:transparent}
+.qchk .box svg{width:11px;height:11px}
+.qchk[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-soft);color:var(--accent)}
+.qchk[aria-pressed="true"] .box{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.qtop .grow{flex:1}
 .row.speaking{background:var(--accent-soft);border-radius:6px}
 .spk{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border:0;background:none;color:var(--muted);border-radius:6px;cursor:pointer;flex:none}
 .spk:hover{color:var(--accent);background:var(--accent-soft)}
@@ -101,7 +112,7 @@ textarea{min-height:130px;font-family:var(--f-num);font-size:14px;resize:vertica
 .setupfoot{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:14px}
 
 /* quiz */
-.qtop{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.qtop{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .bar{height:4px;background:var(--line);border-radius:4px;overflow:hidden}
 .bar i{display:block;height:100%;background:var(--accent);transition:width .2s}
 .prompt{text-align:center;padding:26px 8px 18px;display:flex;flex-direction:column;gap:6px}
@@ -128,7 +139,8 @@ textarea{min-height:130px;font-family:var(--f-num);font-size:14px;resize:vertica
 .score{display:flex;align-items:baseline;gap:10px}
 .score .big{font:500 44px var(--f-num)}
 .score .of{color:var(--muted)}
-.wronglist .row{grid-template-columns:minmax(0,1fr) minmax(0,1.4fr) auto}
+.wronglist .row{grid-template-columns:2.2em minmax(0,1fr) minmax(0,1.4fr) auto}
+.listhead{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
 .resbtns{display:flex;gap:8px;flex-wrap:wrap}
 .status{font-size:12px;color:var(--muted)}
 .backup{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:14px}
@@ -184,12 +196,13 @@ details.setbox > .sets{padding-top:10px}
   .addform{grid-template-columns:1fr 1fr}
   .addform .btn{grid-column:1 / -1}
   .opts{grid-template-columns:1fr}
-  .row{grid-template-columns:1.8em minmax(0,1fr) auto;row-gap:2px}
+  .row{grid-template-columns:2.1em minmax(0,1fr) auto;row-gap:2px}
+  .row > .chk, .row > .idx{grid-row:1 / span 2}
   .row .m{grid-column:2;grid-row:2}
   .row .acts{grid-column:3;grid-row:1 / span 2}
-  .wronglist .row{grid-template-columns:minmax(0,1fr) auto}
-  .wronglist .row .m{grid-column:1;grid-row:2}
-  .wronglist .row .tag{grid-column:2;grid-row:1 / span 2}
+  .wronglist .row{grid-template-columns:2.1em minmax(0,1fr) auto}
+  .wronglist .row .m{grid-column:2;grid-row:2}
+  .wronglist .row .tag{grid-column:3;grid-row:1 / span 2}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
@@ -299,7 +312,7 @@ details.setbox > .sets{padding-top:10px}
     if (!Array.isArray(arr)) return null;
     return arr.filter(d => d && Array.isArray(d.words)).map((d, i) => ({
       id: String(d.id || uid('d')), name: String(d.name || `Day ${i + 1}`), order: Number(d.order) || i + 1,
-      words: d.words.filter(w => w && w.w && w.m).map(w => ({ id: String(w.id || uid('w')), w: String(w.w), m: String(w.m) }))
+      words: d.words.filter(w => w && w.w && w.m).map(w => ({ id: String(w.id || uid('w')), w: String(w.w), m: String(w.m), checked: !!w.checked }))
     }));
   }
   function readImport(file) {
@@ -318,18 +331,23 @@ details.setbox > .sets{padding-top:10px}
       let order = days.reduce((m, d) => Math.max(m, d.order ?? 0), 0);
       for (const d of importing) {
         const t = byName.get(d.name);
-        if (t) { const seen = new Set(t.words.map(w => w.w.toLowerCase() + '\u0000' + w.m)); for (const w of d.words) if (!seen.has(w.w.toLowerCase() + '\u0000' + w.m)) t.words.push({ ...w, id: uid('w') }); }
+        if (t) {
+          const key = w => w.w.toLowerCase() + '\u0000' + w.m;
+          const have = new Map(t.words.map(w => [key(w), w]));
+          // 이미 있는 단어는 파일의 체크 상태를 따르고, 없는 단어는 추가
+          for (const w of d.words) { const ex = have.get(key(w)); if (ex) ex.checked = !!w.checked; else t.words.push({ ...w, id: uid('w') }); }
+        }
         else days.push({ ...d, id: uid('d'), order: ++order });
       }
     }
     importing = null; curDay = null; saveLocal(); view = 'words'; render(); toast('백업을 불러왔어요');
   }
   function renderImport() {
-    const nw = importing.reduce((s, d) => s + d.words.length, 0);
+    const nw = importing.reduce((s, d) => s + d.words.length, 0), nc = importing.reduce((s, d) => s + d.words.filter(w => w.checked).length, 0);
     app.innerHTML = `<section class="panel">
       <strong>백업 불러오기</strong>
-      <div>파일에 Day ${importing.length}개, 단어 ${nw}개가 있어요. 지금 단어장에는 Day ${days.length}개가 있어요.</div>
-      <div class="hint">합치기: 같은 이름의 Day는 단어를 더하고(중복 제외), 없는 Day는 새로 만듭니다. 덮어쓰기: 지금 단어장을 지우고 파일 내용으로 바꿉니다.</div>
+      <div>파일에 Day ${importing.length}개, 단어 ${nw}개(체크 ${nc}개)가 있어요. 지금 단어장에는 Day ${days.length}개가 있어요.</div>
+      <div class="hint">합치기: 같은 이름의 Day는 없는 단어만 더하고, 이미 있는 단어는 파일의 체크 상태로 맞춥니다. 없는 Day는 새로 만듭니다. 덮어쓰기: 지금 단어장을 지우고 파일 내용으로 바꿉니다.</div>
       <div class="resbtns"><button class="btn primary" id="imMerge">합치기</button><button class="btn danger" id="imReplace">덮어쓰기</button><button class="btn" id="imCancel">취소</button></div>
     </section>`;
     $('#imMerge').onclick = () => applyImport('merge');
@@ -358,12 +376,26 @@ details.setbox > .sets{padding-top:10px}
     ['deteriorate','악화되다'],['feasible','실현 가능한']
   ];
 
+  // ---------- word checks ----------
+  // 체크 상태는 단어 객체의 checked 필드에 저장 → localStorage와 백업 json에 그대로 들어간다
+  const CHK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>';
+  function findWord(id) { for (const d of days) { const w = d.words.find(x => x.id === id); if (w) return { day: d, word: w }; } return null; }
+  const isChecked = id => !!(findWord(id)?.word.checked);
+  function setChecked(id, on) { const f = findWord(id); if (!f) return false; f.word.checked = !!on; saveDay(f.day); return f.word.checked; }
+  const chkBtn = (id, label) => `<button type="button" class="chk" data-chk="${id}" aria-pressed="${isChecked(id)}" aria-label="${esc(label)} 체크" title="체크"><span class="box">${CHK}</span></button>`;
+  // 같은 단어의 체크 표시가 화면 여러 곳에 있어도 함께 바뀌도록
+  function paintChecks(id) { const on = isChecked(id); document.querySelectorAll(`[data-chk="${id}"]`).forEach(b => b.setAttribute('aria-pressed', String(on))); }
+  function bindChecks(root, after) {
+    root.querySelectorAll('[data-chk]').forEach(b => b.onclick = () => { const id = b.dataset.chk; setChecked(id, !isChecked(id)); paintChecks(id); after && after(id); });
+  }
+
   // ---------- speech (Web Speech API) ----------
   const TTS = { ok: typeof window.speechSynthesis !== 'undefined' && typeof window.SpeechSynthesisUtterance !== 'undefined', voices: [] };
   const SPK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>';
-  const ttsOpt = { mrep: 1, rep: 1, rate: 0.9, order: 'seq', auto: true };
+  const ttsOpt = { srep: 1, meaning: true, rate: 0.9, order: 'seq' };
   try { Object.assign(ttsOpt, JSON.parse(localStorage.getItem('vocab-tts') || '{}')); } catch (e) {}
-  if (typeof ttsOpt.meaning === 'boolean') { let had = false; try { had = 'mrep' in JSON.parse(localStorage.getItem('vocab-tts') || '{}'); } catch (e) {} if (!had) ttsOpt.mrep = ttsOpt.meaning ? 1 : 0; delete ttsOpt.meaning; }
+  // 예전 설정(단어 반복/뜻 반복 따로)을 세트 반복으로 옮긴다
+  if ('mrep' in ttsOpt || 'rep' in ttsOpt) { if (typeof ttsOpt.mrep === 'number') ttsOpt.meaning = ttsOpt.mrep > 0; delete ttsOpt.mrep; delete ttsOpt.rep; delete ttsOpt.auto; }
   const saveTts = () => { try { localStorage.setItem('vocab-tts', JSON.stringify(ttsOpt)); } catch (e) {} };
   function loadVoices() { try { TTS.voices = speechSynthesis.getVoices() || []; } catch (e) {} }
   if (TTS.ok) { loadVoices(); try { speechSynthesis.addEventListener('voiceschanged', () => { loadVoices(); paintVoices(); }); } catch (e) {} }
@@ -386,7 +418,7 @@ details.setbox > .sets{padding-top:10px}
     return exact.find(x => x.default) || exact[0] || list[0] || null;
   }
   let ttsSetOpen = false;
-  const ttsSummary = () => `단어 ${ttsOpt.rep}회 · 뜻 ${ttsOpt.mrep ? ttsOpt.mrep + '회' : '안 읽음'} · ${({ 0.7: '느리게', 0.9: '보통', 1.1: '빠르게' })[ttsOpt.rate] || '보통'} · ${ttsOpt.order === 'rand' ? '랜덤' : '순서대로'}`;
+  const ttsSummary = () => `${ttsOpt.meaning ? '단어+뜻' : '단어만'} ${ttsOpt.srep}회 · ${({ 0.7: '느리게', 0.9: '보통', 1.1: '빠르게' })[ttsOpt.rate] || '보통'} · ${ttsOpt.order === 'rand' ? '랜덤' : '순서대로'}`;
   // 설정 상자는 재생 중에도 다시 그리지 않는다(선택창이 닫히지 않도록)
   function paintVoices() {
     const box = $('#ttsSet'); if (!box || !TTS.ok) return;
@@ -399,8 +431,8 @@ details.setbox > .sets{padding-top:10px}
     };
     box.innerHTML = `<details class="setbox" id="ttsDetails" ${ttsSetOpen ? 'open' : ''}><summary>듣기 설정 <span class="hint" id="ttsSum">${ttsSummary()}</span></summary>
       <div class="olist">
-        ${segRow('tts', 'rep', '단어 반복', ttsOpt.rep, nOpts([1, 2, 3], '회'))}
-        ${segRow('tts', 'mrep', '뜻 반복', ttsOpt.mrep, nOpts([0, 1, 2, 3], '회', '없음'))}
+        ${segRow('tts', 'srep', '세트 반복', ttsOpt.srep, nOpts([1, 2, 3], '회'))}
+        ${segRow('tts', 'meaning', '뜻', ttsOpt.meaning, [[true, '읽기'], [false, '안 읽기']])}
         ${segRow('tts', 'rate', '속도', ttsOpt.rate, [[0.7, '느리게'], [0.9, '보통'], [1.1, '빠르게']])}
         ${segRow('tts', 'order', '순서', ttsOpt.order, [['seq', '입력 순서'], ['rand', '랜덤']])}
         ${vRow('en-US', '영어 목소리')}
@@ -436,9 +468,12 @@ details.setbox > .sets{padding-top:10px}
     else if (startId) { const k = ws.findIndex(w => w.id === startId); if (k > 0) ws = ws.slice(k); }
     const steps = [];
     for (const w of ws) {
-      for (let r = 0; r < ttsOpt.rep; r++) steps.push({ id: w.id, text: w.w, gap: 450 });
-      for (let r = 0; r < ttsOpt.mrep; r++) steps.push({ id: w.id, text: w.m, gap: 450 });
-      steps[steps.length - 1].gap = 1000;
+      // 단어→뜻 한 세트를 srep번 반복. 세트 안은 짧게, 반복 사이는 조금 길게, 다음 단어 전엔 더 길게 쉰다
+      for (let r = 0; r < ttsOpt.srep; r++) {
+        steps.push({ id: w.id, text: w.w, gap: 450 });
+        if (ttsOpt.meaning) steps.push({ id: w.id, text: w.m, gap: 450 });
+        steps[steps.length - 1].gap = r < ttsOpt.srep - 1 ? 750 : 1100;
+      }
     }
     return steps;
   }
@@ -509,13 +544,13 @@ details.setbox > .sets{padding-top:10px}
     const chips = list.map(d => `<button class="chip" aria-pressed="${d.id === curDay}" data-day="${d.id}">${esc(d.name)} <span class="num">${d.words.length}</span></button>`).join('');
     const rows = day.words.map((x, i) => editingWord === x.id
       ? `<div class="row editing" data-w="${x.id}"><span class="idx num">${i + 1}</span><input type="text" id="ew-${x.id}" value="${esc(x.w)}" aria-label="단어"><input type="text" id="em-${x.id}" value="${esc(x.m)}" aria-label="뜻"><span class="acts"><button class="ghost" data-save="${x.id}">저장</button><button class="ghost" data-cancel>취소</button></span></div>`
-      : `<div class="row" data-w="${x.id}"><span class="idx num">${i + 1}</span><span class="w">${esc(x.w)}</span><span class="m">${esc(x.m)}</span><span class="acts">${TTS.ok ? `<button class="spk" data-say="${x.id}" aria-label="${esc(x.w)} 듣기" title="듣기">${SPK}</button>` : ''}<button class="ghost" data-edit="${x.id}">수정</button><button class="ghost" data-del="${x.id}">삭제</button></span></div>`).join('');
+      : `<div class="row" data-w="${x.id}">${chkBtn(x.id, x.w)}<span class="w">${esc(x.w)}</span><span class="m">${esc(x.m)}</span><span class="acts">${TTS.ok ? `<button class="spk" data-say="${x.id}" aria-label="${esc(x.w)} 듣기" title="듣기">${SPK}</button>` : ''}<button class="ghost" data-edit="${x.id}">수정</button><button class="ghost" data-del="${x.id}">삭제</button></span></div>`).join('');
     app.innerHTML = `
       <div class="field"><span class="label">Day</span><div class="days scroll" id="dayChips">${chips}<button class="chip add" id="addDay">+ Day 추가</button></div></div>
       <section class="panel">
         <div class="dayhead">
           <input class="dayname" id="dayname" value="${esc(day.name)}" aria-label="Day 이름">
-          <span class="sub num">${day.words.length}단어</span>
+          <span class="sub num" id="dayCount">${day.words.length}단어 · 체크 ${day.words.filter(w => w.checked).length}</span>
           <div class="dayacts">
           <button class="btn sm" id="testThis" ${day.words.length ? '' : 'disabled'}>테스트</button>
           <button class="btn sm" id="toText" ${day.words.length ? '' : 'disabled'}>텍스트로 뽑기</button>
@@ -570,14 +605,16 @@ details.setbox > .sets{padding-top:10px}
       b.onclick = go; [$('#ew-' + id), $('#em-' + id)].forEach(i => i.onkeydown = e => { if (e.key === 'Enter') go(); if (e.key === 'Escape') { editingWord = null; render(); } });
     });
     app.querySelectorAll('[data-del]').forEach(b => b.onclick = () => { const i = day.words.findIndex(x => x.id === b.dataset.del); const [x] = day.words.splice(i, 1); saveDay(day); setStatus(); render(); toast(`"${x.w}" 삭제됨`); });
-    app.querySelectorAll('[data-say]').forEach(b => b.onclick = () => { const x = day.words.find(x => x.id === b.dataset.say); if (x) { sayNow(x.w); if (ttsOpt.mrep > 0) say(x.m); } });
+    app.querySelectorAll('[data-say]').forEach(b => b.onclick = () => { const x = day.words.find(x => x.id === b.dataset.say); if (x) { sayNow(x.w); if (ttsOpt.meaning) say(x.m); } });
+    bindChecks(app, () => { const el = $('#dayCount'); if (el) el.textContent = `${day.words.length}단어 · 체크 ${day.words.filter(w => w.checked).length}`; });
     paintPlayer(); paintVoices();
     try { const c = app.querySelector('#dayChips [aria-pressed="true"]'); if (c && c.scrollIntoView && window.matchMedia('(max-width:540px)').matches) c.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (e) {}
     if (player && player.dayId === day.id) markSpeaking(player.steps[player.cur]?.id);
   }
 
   // ---------- render: test setup ----------
-  function poolFor(sel) { const out = []; for (const d of sorted()) if (sel.has(d.id)) for (const w of d.words) out.push({ ...w, day: d.name }); return out; }
+  setup.target = 'all';
+  function poolFor(sel, target = setup.target) { const out = []; for (const d of sorted()) if (sel.has(d.id)) for (const w of d.words) if (target !== 'checked' || w.checked) out.push({ ...w, day: d.name }); return out; }
   function renderSetup() {
     const list = sorted().filter(d => d.words.length);
     for (const id of [...setup.sel]) if (!list.find(d => d.id === id)) setup.sel.delete(id);
@@ -590,17 +627,20 @@ details.setbox > .sets{padding-top:10px}
     const mcOk = total >= 2;
     if (!mcOk && setup.type === 'mc') setup.type = 'type';
     const n = setup.count === 'all' ? pool.length : Math.min(pool.length, +setup.count);
+    const checkedTotal = list.filter(d => setup.sel.has(d.id)).reduce((s, d) => s + d.words.filter(w => w.checked).length, 0);
+    const emptyMsg = !setup.sel.size ? 'Day를 하나 이상 고르세요' : '고른 Day에 체크한 단어가 없어요. 단어장에서 체크하세요';
     app.innerHTML = `<section class="panel">
       <div class="field"><span class="label">범위</span>
-        <div class="days">${list.map(d => `<button class="chip" data-sel="${d.id}" aria-pressed="${setup.sel.has(d.id)}">${esc(d.name)} <span class="num">${d.words.length}</span></button>`).join('')}
+        <div class="days">${list.map(d => `<button class="chip" data-sel="${d.id}" aria-pressed="${setup.sel.has(d.id)}">${esc(d.name)} <span class="num">${setup.target === 'checked' ? '✓' + d.words.filter(w => w.checked).length : d.words.length}</span></button>`).join('')}
         <button class="chip add" id="selAll">${setup.sel.size === list.length ? '선택 해제' : '전체 선택'}</button></div></div>
       <div class="olist" id="setupOpts">
+        ${segRow('setup', 'target', '대상', setup.target, [['all', '전체 단어'], ['checked', `체크한 단어 (${checkedTotal})`]])}
         ${segRow('setup', 'dir', '문제', setup.dir, [['en', '단어→뜻'], ['ko', '뜻→단어'], ['mix', '섞기']].concat(TTS.ok ? [['listen', '듣기']] : []))}
         ${segRow('setup', 'type', '답하기', setup.type, [['mc', '4지선다', !mcOk], ['type', '직접 입력']])}
         ${segRow('setup', 'count', '문항 수', setup.count, [['all', '전체'], ['10', '10'], ['20', '20'], ['30', '30']])}
       </div>
       <div class="hint" id="dirHint">${({ en: '영어 단어를 보고 뜻을 고릅니다.', ko: '뜻을 보고 영어 단어를 고릅니다.', mix: '두 방향이 무작위로 섞여 나옵니다.', listen: '단어를 숨기고, 스피커 버튼을 눌러 소리로 듣고 뜻을 고릅니다.' })[setup.dir]}</div>
-      <div class="setupfoot"><span class="sub">${pool.length ? `${n}문제 · 순서는 매번 랜덤` : 'Day를 하나 이상 고르세요'}</span>
+      <div class="setupfoot"><span class="sub">${pool.length ? `${n}문제 · 순서는 매번 랜덤` : emptyMsg}</span>
         <button class="btn primary" id="start" ${pool.length ? '' : 'disabled'}>시작</button></div>
     </section>`;
     app.querySelectorAll('[data-sel]').forEach(b => b.onclick = () => { const id = b.dataset.sel; setup.sel.has(id) ? setup.sel.delete(id) : setup.sel.add(id); render(); });
@@ -672,7 +712,7 @@ details.setbox > .sets{padding-top:10px}
         : `<div class="fb no"><span><b>오답</b> <span class="ans">정답: ${esc(right)}</span></span>${setup.type === 'type' ? '<button class="btn sm" id="override">맞은 걸로 처리</button>' : ''}</div>`;
     }
     app.innerHTML = `<section class="panel">
-      <div class="qtop"><span class="num">${quiz.i + 1} / ${total}</span><span class="sub">${esc(it.w.day)}</span><button class="ghost" id="quit">그만하기</button></div>
+      <div class="qtop"><span class="num">${quiz.i + 1} / ${total}</span><span class="sub">${esc(it.w.day)}</span><span class="grow"></span><button type="button" class="qchk" data-chk="${it.w.id}" aria-pressed="${isChecked(it.w.id)}" title="이 단어 체크"><span class="box">${CHK}</span>체크</button><button class="ghost" id="quit">그만하기</button></div>
       <div class="bar"><i style="width:${(quiz.i + (answered ? 1 : 0)) / total * 100}%"></i></div>
       <div class="prompt"><span class="dir">${it.dir === 'ko' ? '영어 단어는?' : it.dir === 'listen' ? '듣고 뜻을 고르세요' : '뜻은?'}</span><span class="q ${it.dir === 'ko' ? 'ko' : ''}">${hideQ ? '· · ·' : esc(q)}</span>${TTS.ok ? `<button class="spk" id="qSay" aria-label="문제 듣기" title="듣기">${SPK}</button>` : ''}</div>
       ${body}${fb}
@@ -681,6 +721,8 @@ details.setbox > .sets{padding-top:10px}
     app.querySelectorAll('[data-o]').forEach(b => b.onclick = () => answer(it.options[+b.dataset.o]));
     if ($('#tf')) { $('#tf').onsubmit = e => { e.preventDefault(); const v = $('#ta').value.trim(); if (v) answer(v); }; if (!answered) $('#ta').focus(); }
     $('#qSay') && ($('#qSay').onclick = () => sayNow(q));
+    // 화면을 다시 그리지 않고 체크만 바꾼다(입력 중인 답이 지워지지 않게)
+    bindChecks(app, () => { const ta = $('#ta'); if (ta && !ta.disabled) ta.focus(); else if (answered) $('#next').focus(); });
     $('#override') && ($('#override').onclick = () => { it.correct = true; render(); });
     $('#quit').onclick = () => { view = 'result'; quiz.items = quiz.items.slice(0, quiz.i + (answered ? 1 : 0)); render(); };
     if (answered) $('#next').focus();
@@ -701,12 +743,14 @@ details.setbox > .sets{padding-top:10px}
         <button class="btn" id="again">같은 범위 다시</button>
         <button class="btn" id="toSetup">설정 바꾸기</button>
       </div>
-      ${wrong.length ? `<div class="field"><span class="label">틀린 단어</span><div class="list wronglist">${wrong.map(x => `<div class="row"><span class="w">${esc(x.w.w)}</span><span class="m">${esc(x.w.m)}</span><span class="sub tag">${TTS.ok ? `<button class="spk" data-rs="${esc(x.w.w)}" aria-label="${esc(x.w.w)} 듣기">${SPK}</button>` : ''}${esc(x.w.day)}</span></div>`).join('')}</div></div>` : (items.length ? `<div class="fb ok"><b>전부 맞혔어요</b></div>` : '')}
+      ${wrong.length ? `<div class="field"><div class="listhead"><span class="label">틀린 단어</span><button class="btn sm" id="checkWrong">틀린 단어 모두 체크</button></div><div class="list wronglist">${wrong.map(x => `<div class="row">${chkBtn(x.w.id, x.w.w)}<span class="w">${esc(x.w.w)}</span><span class="m">${esc(x.w.m)}</span><span class="sub tag">${TTS.ok ? `<button class="spk" data-rs="${esc(x.w.w)}" aria-label="${esc(x.w.w)} 듣기">${SPK}</button>` : ''}${esc(x.w.day)}</span></div>`).join('')}</div></div>` : (items.length ? `<div class="fb ok"><b>전부 맞혔어요</b></div>` : '')}
     </section>`;
     $('#retryWrong') && ($('#retryWrong').onclick = () => startQuiz(wrong.map(x => x.w), true));
     $('#again').onclick = () => startQuiz(poolFor(setup.sel));
     $('#toSetup').onclick = () => { view = 'setup'; render(); };
     app.querySelectorAll('[data-rs]').forEach(b => b.onclick = () => sayNow(b.dataset.rs));
+    bindChecks(app);
+    $('#checkWrong') && ($('#checkWrong').onclick = () => { const ids = [...new Set(wrong.map(x => x.w.id))]; ids.forEach(id => { setChecked(id, true); paintChecks(id); }); toast(`${ids.length}개 체크했어요`); });
   }
 
   document.addEventListener('keydown', e => {
@@ -715,11 +759,11 @@ details.setbox > .sets{padding-top:10px}
   });
 
   // ---------- text export (for text-reader apps) ----------
-  const exportOpt = { sel: [], mrep: 1, rep: 1, gap: 2, style: 'blank', title: true, order: 'seq', num: false };
-  try { const o = JSON.parse(localStorage.getItem('vocab-export') || '{}'); delete o.sel; if (typeof o.meaning === 'boolean' && !('mrep' in o)) o.mrep = o.meaning ? 1 : 0; delete o.meaning; Object.assign(exportOpt, o); } catch (e) {}
+  const exportOpt = { sel: [], srep: 1, meaning: true, gap: 2, style: 'blank', title: true, order: 'seq', num: false };
+  try { const o = JSON.parse(localStorage.getItem('vocab-export') || '{}'); delete o.sel; if ('mrep' in o || 'rep' in o) { if (typeof o.mrep === 'number') o.meaning = o.mrep > 0; delete o.mrep; delete o.rep; } Object.assign(exportOpt, o); } catch (e) {}
   const saveExportOpt = () => { try { const { sel, ...rest } = exportOpt; localStorage.setItem('vocab-export', JSON.stringify(rest)); } catch (e) {} };
   let exportSetOpen = false;
-  const exportSummary = () => `단어 ${exportOpt.rep}회 · 뜻 ${exportOpt.mrep ? exportOpt.mrep + '회' : '없음'} · 간격 ${exportOpt.gap}줄${({ dot: '(마침표)', comma: '(쉼표)' })[exportOpt.style] || ''} · ${exportOpt.order === 'rand' ? '랜덤' : '입력 순서'}`;
+  const exportSummary = () => `${exportOpt.meaning ? '단어+뜻' : '단어만'} ${exportOpt.srep}회 · 간격 ${exportOpt.gap}줄${({ dot: '(마침표)', comma: '(쉼표)' })[exportOpt.style] || ''} · ${exportOpt.order === 'rand' ? '랜덤' : '입력 순서'}`;
   const withDot = t => /[.!?。…]$/.test(t.trim()) ? t.trim() : t.trim() + '.';
   function buildText() {
     const out = [];
@@ -729,8 +773,12 @@ details.setbox > .sets{padding-top:10px}
       if (exportOpt.title) { out.push(withDot(d.name)); gapLines(); }
       const ws = exportOpt.order === 'rand' ? shuffle(d.words) : d.words;
       ws.forEach((w, i) => {
-        for (let r = 0; r < exportOpt.rep; r++) out.push((exportOpt.num && r === 0 ? `${i + 1}. ` : '') + withDot(w.w));
-        for (let r = 0; r < exportOpt.mrep; r++) out.push(withDot(w.m));
+        // 단어→뜻 세트를 srep번 반복. 반복 사이엔 간격 줄 1개, 다음 단어 전엔 설정한 간격만큼
+        for (let r = 0; r < exportOpt.srep; r++) {
+          out.push((exportOpt.num && r === 0 ? `${i + 1}. ` : '') + withDot(w.w));
+          if (exportOpt.meaning) out.push(withDot(w.m));
+          if (r < exportOpt.srep - 1) out.push(({ dot: '.', comma: ',' })[exportOpt.style] || '');
+        }
         gapLines();
       });
       if (di < chosen.length - 1) gapLines();
@@ -749,8 +797,8 @@ details.setbox > .sets{padding-top:10px}
       <div class="field"><span class="label">범위</span><div class="days">${list.map(d => `<button class="chip" data-xs="${d.id}" aria-pressed="${exportOpt.sel.includes(d.id)}">${esc(d.name)} <span class="num">${d.words.length}</span></button>`).join('')}</div></div>
       <details class="setbox" id="xDetails" ${exportSetOpen ? 'open' : ''}><summary>내보내기 설정 <span class="hint" id="xSum">${exportSummary()}</span></summary>
         <div class="olist" id="xOpts">
-          ${segRow('export', 'rep', '단어 반복', exportOpt.rep, nOpts([1, 2, 3], '회'))}
-          ${segRow('export', 'mrep', '뜻 반복', exportOpt.mrep, nOpts([0, 1, 2, 3], '회', '없음'))}
+          ${segRow('export', 'srep', '세트 반복', exportOpt.srep, nOpts([1, 2, 3], '회'))}
+          ${segRow('export', 'meaning', '뜻', exportOpt.meaning, [[true, '넣기'], [false, '빼기']])}
           ${segRow('export', 'gap', '세트 간격', exportOpt.gap, [[1, '1줄'], [2, '2줄'], [4, '4줄'], [6, '6줄']])}
           ${segRow('export', 'style', '간격 모양', exportOpt.style, [['blank', '빈 줄'], ['dot', '마침표'], ['comma', '쉼표']])}
           ${segRow('export', 'order', '순서', exportOpt.order, [['seq', '입력 순서'], ['rand', '랜덤']])}
