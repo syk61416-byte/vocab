@@ -63,8 +63,8 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 .dayname:hover{border-color:var(--line)}
 .dayhead .spacer{flex:1}
 .addform{display:grid;grid-template-columns:1fr 1.4fr auto;gap:8px}
-input[type=text],textarea{width:100%;min-width:0;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:15px var(--f-ui);padding:9px 11px;border-radius:8px}
-textarea{min-height:130px;font-family:var(--f-num);font-size:14px;resize:vertical}
+input[type=text],textarea{width:100%;min-width:0;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:16px var(--f-ui);padding:9px 11px;border-radius:8px}
+textarea{min-height:130px;font-family:var(--f-num);font-size:16px;resize:vertical}
 .bulk{display:flex;flex-direction:column;gap:8px}
 .hint{font-size:13px;color:var(--muted)}
 .list{border-top:1px solid var(--line)}
@@ -200,6 +200,10 @@ details.setbox > .sets{padding-top:10px}
   .row > .chk, .row > .idx{grid-row:1 / span 2}
   .row .m{grid-column:2;grid-row:2}
   .row .acts{grid-column:3;grid-row:1 / span 2}
+  .row.editing{grid-template-columns:minmax(0,1fr);row-gap:8px;padding:12px 0}
+  .row.editing > .idx{display:none}
+  .row.editing input{grid-column:1;grid-row:auto}
+  .row.editing .acts{grid-column:1;grid-row:auto;justify-content:flex-end;gap:8px}
   .wronglist .row{grid-template-columns:2.1em minmax(0,1fr) auto}
   .wronglist .row .m{grid-column:2;grid-row:2}
   .wronglist .row .tag{grid-column:3;grid-row:1 / span 2}
@@ -461,16 +465,39 @@ details.setbox > .sets{padding-top:10px}
       if (player && day && player.dayId === day.id && k !== 'rate') { const cid = player.steps[player.cur]?.id; const was = player.playing; playDay(day, ttsOpt.order === 'seq' ? cid : null); if (!was) pausePlayer(); }
     });
   }
+  // 읽기 전 다듬기: ~ 는 지우고, / 는 쉼표로. 쉼표·세미콜론 단위로 나눠 한 조각씩 읽는다
+  function speechChunks(text) {
+    const t = String(text).replace(/~/g, ' ').replace(/\s*\/\s*/g, ', ').replace(/\s{2,}/g, ' ').trim();
+    const parts = t.split(/\s*[,;，、]\s*/).map(x => x.trim()).filter(Boolean);
+    return parts.length ? parts : [t];
+  }
+  let sTok = 0, keep = [];
+  function cancelSpeech() { sTok++; keep = []; if (TTS.ok) speechSynthesis.cancel(); }
   function say(text, done) {
     if (!TTS.ok) { done && done(); return; }
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = langOf(text); const v = pickVoice(u.lang); if (v) u.voice = v;
-    u.rate = ttsOpt.rate;
-    let fired = false; const fin = () => { if (!fired) { fired = true; done && done(); } };
-    u.onend = fin; u.onerror = fin;
-    speechSynthesis.speak(u);
+    const t = sTok, chunks = speechChunks(text);
+    const lang = langOf(text), voice = pickVoice(lang);
+    let i = 0;
+    const next = () => {
+      if (t !== sTok) return;                       // 중간에 취소됨
+      if (i >= chunks.length) { done && done(); return; }
+      const u = new SpeechSynthesisUtterance(chunks[i++]);
+      u.lang = lang; if (voice) u.voice = voice; u.rate = ttsOpt.rate;
+      keep.push(u);                                 // 재생 중 객체가 정리되지 않게 참조 유지
+      let fired = false;
+      // end 이벤트가 오지 않는 경우를 대비한 안전장치(글자 수로 넉넉히 계산)
+      const guard = setTimeout(() => fin(), 2500 + u.text.length * 450 / ttsOpt.rate);
+      const fin = () => { if (fired) return; fired = true; clearTimeout(guard); keep = keep.filter(x => x !== u); setTimeout(next, i < chunks.length ? 180 : 0); };
+      u.onend = fin; u.onerror = fin;
+      speechSynthesis.speak(u);
+    };
+    next();
   }
-  function sayNow(text) { if (!TTS.ok) return; stopPlayer(); speechSynthesis.cancel(); say(text); }
+  // 취소 직후 바로 speak 하면 Safari에서 이벤트가 안 오는 문제가 있어 잠깐 띄운다
+  function sayNow(text, done) {
+    if (!TTS.ok) return; stopPlayer(); cancelSpeech();
+    const t = sTok; setTimeout(() => { if (t === sTok) say(text, done); }, 150);
+  }
 
   // Day 전체 읽기 플레이어: 단계 목록을 만들고 한 문장씩 이어서 읽는다
   let player = null, ptok = 0;
@@ -491,9 +518,10 @@ details.setbox > .sets{padding-top:10px}
   }
   function playDay(day, startId) {
     if (!TTS.ok || !day.words.length) return;
-    stopPlayer(); speechSynthesis.cancel();
-    player = { dayId: day.id, steps: buildSteps(day, startId), cur: 0, playing: true, timer: null };
-    stepPlayer(); paintPlayer();
+    stopPlayer(); cancelSpeech();
+    const p = player = { dayId: day.id, steps: buildSteps(day, startId), cur: 0, playing: true, timer: null };
+    paintPlayer();
+    p.timer = setTimeout(() => { if (player === p && p.playing) stepPlayer(); }, 150);
   }
   function stepPlayer() {
     if (!player || !player.playing) return;
@@ -505,12 +533,12 @@ details.setbox > .sets{padding-top:10px}
       player.timer = setTimeout(() => { if (t !== ptok || !player) return; player.cur++; stepPlayer(); }, st.gap);
     });
   }
-  function pausePlayer() { if (!player) return; player.playing = false; ptok++; clearTimeout(player.timer); speechSynthesis.cancel(); paintPlayer(); }
-  function resumePlayer() { if (!player) return; player.playing = true; stepPlayer(); }
+  function pausePlayer() { if (!player) return; player.playing = false; ptok++; clearTimeout(player.timer); cancelSpeech(); paintPlayer(); }
+  function resumePlayer() { if (!player) return; const p = player; p.playing = true; paintPlayer(); p.timer = setTimeout(() => { if (player === p && p.playing) stepPlayer(); }, 150); }
   function stopPlayer() {
     if (player) clearTimeout(player.timer);
     const had = !!player; player = null; ptok++;
-    if (had && TTS.ok) speechSynthesis.cancel();
+    if (had) cancelSpeech();
     markSpeaking(null); paintPlayer();
   }
   function markSpeaking(id) {
@@ -555,7 +583,7 @@ details.setbox > .sets{padding-top:10px}
     const day = days.find(d => d.id === curDay);
     const chips = list.map(d => `<button class="chip" aria-pressed="${d.id === curDay}" data-day="${d.id}">${esc(d.name)} <span class="num">${d.words.length}</span></button>`).join('');
     const rows = day.words.map((x, i) => editingWord === x.id
-      ? `<div class="row editing" data-w="${x.id}"><span class="idx num">${i + 1}</span><input type="text" id="ew-${x.id}" value="${esc(x.w)}" aria-label="단어"><input type="text" id="em-${x.id}" value="${esc(x.m)}" aria-label="뜻"><span class="acts"><button class="ghost" data-save="${x.id}">저장</button><button class="ghost" data-cancel>취소</button></span></div>`
+      ? `<div class="row editing" data-w="${x.id}"><span class="idx num">${i + 1}</span><input type="text" id="ew-${x.id}" value="${esc(x.w)}" aria-label="단어"><input type="text" id="em-${x.id}" value="${esc(x.m)}" aria-label="뜻"><span class="acts"><button class="btn sm" data-cancel>취소</button><button class="btn sm primary" data-save="${x.id}">저장</button></span></div>`
       : `<div class="row" data-w="${x.id}">${chkBtn(x.id, x.w)}<span class="w">${esc(x.w)}</span><span class="m">${esc(x.m)}</span><span class="acts">${TTS.ok ? `<button class="spk" data-say="${x.id}" aria-label="${esc(x.w)} 듣기" title="듣기">${SPK}</button>` : ''}<button class="ghost" data-edit="${x.id}">수정</button><button class="ghost" data-del="${x.id}">삭제</button></span></div>`).join('');
     app.innerHTML = `
       <div class="field"><span class="label">Day</span><div class="days scroll" id="dayChips">${chips}<button class="chip add" id="addDay">+ Day 추가</button></div></div>
@@ -617,7 +645,7 @@ details.setbox > .sets{padding-top:10px}
       b.onclick = go; [$('#ew-' + id), $('#em-' + id)].forEach(i => i.onkeydown = e => { if (e.key === 'Enter') go(); if (e.key === 'Escape') { editingWord = null; render(); } });
     });
     app.querySelectorAll('[data-del]').forEach(b => b.onclick = () => { const i = day.words.findIndex(x => x.id === b.dataset.del); const [x] = day.words.splice(i, 1); saveDay(day); setStatus(); render(); toast(`"${x.w}" 삭제됨`); });
-    app.querySelectorAll('[data-say]').forEach(b => b.onclick = () => { const x = day.words.find(x => x.id === b.dataset.say); if (x) { sayNow(x.w); if (ttsOpt.meaning) say(x.m); } });
+    app.querySelectorAll('[data-say]').forEach(b => b.onclick = () => { const x = day.words.find(x => x.id === b.dataset.say); if (x) sayNow(x.w, () => { if (ttsOpt.meaning) setTimeout(() => say(x.m), 350); }); });
     bindChecks(app, () => { const el = $('#dayCount'); if (el) el.textContent = `${day.words.length}단어 · 체크 ${day.words.filter(w => w.checked).length}`; });
     paintPlayer(); paintVoices();
     try { const c = app.querySelector('#dayChips [aria-pressed="true"]'); if (c && c.scrollIntoView && window.matchMedia('(max-width:540px)').matches) c.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (e) {}
@@ -844,7 +872,7 @@ details.setbox > .sets{padding-top:10px}
 
   // ---------- tabs ----------
   function switchTab(t) {
-    stopPlayer(); if (TTS.ok) speechSynthesis.cancel();
+    stopPlayer(); cancelSpeech();
     view = t === 'words' ? 'words' : 'setup';
     $('#tab-words').setAttribute('aria-selected', t === 'words');
     $('#tab-test').setAttribute('aria-selected', t !== 'words');
