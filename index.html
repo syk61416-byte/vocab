@@ -269,6 +269,18 @@ details.setbox > .sets{padding-top:10px}
   const LKEY = 'vocab-days-v1', BKEY = 'vocab-last-backup';
   let storageOk = true;
 
+  // 문서에서 복사할 때 섞여 들어오는 보이지 않는 문자 정리
+  // NUL 같은 제어문자·폭 없는 공백·BOM은 지우고, 줄바꿈 없는 공백/전각 공백/탭은 일반 공백으로, 연속 공백은 하나로
+  const JUNK = /[\u0000-\u0008\u000A-\u001F\u007F-\u009F­​-‏‪-‮⁠-⁤﻿]/g;
+  const clean = t => String(t ?? '').replace(/[\t  -   　]/g, ' ').replace(JUNK, '').replace(/ {2,}/g, ' ').trim();
+  function cleanAll() {
+    let n = 0;
+    for (const d of days) {
+      const nm = clean(d.name); if (nm && nm !== d.name) { d.name = nm; n++; }
+      for (const w of d.words || []) { const a = clean(w.w), b = clean(w.m); if (a !== w.w || b !== w.m) { w.w = a || w.w; w.m = b || w.m; n++; } }
+    }
+    return n;
+  }
   function loadLocal() {
     try {
       const raw = localStorage.getItem(LKEY);
@@ -311,8 +323,8 @@ details.setbox > .sets{padding-top:10px}
     const arr = Array.isArray(p) ? p : p && p.days;
     if (!Array.isArray(arr)) return null;
     return arr.filter(d => d && Array.isArray(d.words)).map((d, i) => ({
-      id: String(d.id || uid('d')), name: String(d.name || `Day ${i + 1}`), order: Number(d.order) || i + 1,
-      words: d.words.filter(w => w && w.w && w.m).map(w => ({ id: String(w.id || uid('w')), w: String(w.w), m: String(w.m), checked: !!w.checked }))
+      id: String(d.id || uid('d')), name: clean(d.name) || `Day ${i + 1}`, order: Number(d.order) || i + 1,
+      words: d.words.filter(w => w && clean(w.w) && clean(w.m)).map(w => ({ id: String(w.id || uid('w')), w: clean(w.w), m: clean(w.m), checked: !!w.checked }))
     }));
   }
   function readImport(file) {
@@ -364,9 +376,9 @@ details.setbox > .sets{padding-top:10px}
   function parseBulk(text) {
     const out = [];
     for (let line of text.split(/\r?\n/)) {
-      line = line.trim(); if (!line) continue;
+      line = line.replace(JUNK, '').replace(/[\u00A0\u3000]/g, ' ').trim(); if (!line) continue;
       let m = line.match(/^(.+?)\s*(?:\t| - | – | — |:|=|,)\s*(.+)$/) || line.match(/^([A-Za-z][A-Za-z'’\-\. ]*?)\s+(.+)$/);
-      if (m) out.push({ w: m[1].trim(), m: m[2].trim() });
+      if (m && clean(m[1]) && clean(m[2])) out.push({ w: clean(m[1]), m: clean(m[2]) });
     }
     return out;
   }
@@ -577,7 +589,7 @@ details.setbox > .sets{padding-top:10px}
     app.querySelectorAll('[data-day]').forEach(b => b.onclick = () => { if (curDay !== b.dataset.day) stopPlayer(); curDay = b.dataset.day; editingWord = null; armedDelete = null; render(); });
     $('#addDay').onclick = () => { addDay(); editingWord = null; render(); $('#nw')?.focus(); };
     const dn = $('#dayname');
-    dn.onchange = () => { const v = dn.value.trim(); if (v && v !== day.name) { day.name = v; saveDay(day); render(); } else dn.value = day.name; };
+    dn.onchange = () => { const v = clean(dn.value); if (v && v !== day.name) { day.name = v; saveDay(day); render(); } else dn.value = day.name; };
     dn.onkeydown = e => { if (e.key === 'Enter') dn.blur(); };
     $('#delDay').onclick = () => {
       if (armedDelete !== day.id) { armedDelete = day.id; render(); setTimeout(() => { if (armedDelete === day.id) { armedDelete = null; if (view === 'words') render(); } }, 3500); return; }
@@ -587,7 +599,7 @@ details.setbox > .sets{padding-top:10px}
     $('#toText').onclick = () => { stopPlayer(); exportOpt.sel = [day.id]; view = 'export'; render(); };
     $('#addform').onsubmit = e => {
       e.preventDefault();
-      const w = $('#nw').value.trim(), m = $('#nm').value.trim();
+      const w = clean($('#nw').value), m = clean($('#nm').value);
       if (!w || !m) { toast('단어와 뜻을 모두 적어 주세요'); (w ? $('#nm') : $('#nw')).focus(); return; }
       day.words.push({ id: uid('w'), w, m }); saveDay(day); setStatus(); render(); $('#nw').focus();
     };
@@ -601,7 +613,7 @@ details.setbox > .sets{padding-top:10px}
     app.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => { editingWord = b.dataset.edit; render(); $('#ew-' + editingWord)?.focus(); });
     app.querySelectorAll('[data-cancel]').forEach(b => b.onclick = () => { editingWord = null; render(); });
     app.querySelectorAll('[data-save]').forEach(b => {
-      const id = b.dataset.save, go = () => { const x = day.words.find(x => x.id === id); const w = $('#ew-' + id).value.trim(), m = $('#em-' + id).value.trim(); if (!w || !m) { toast('비워둘 수 없어요'); return; } x.w = w; x.m = m; editingWord = null; saveDay(day); render(); };
+      const id = b.dataset.save, go = () => { const x = day.words.find(x => x.id === id); const w = clean($('#ew-' + id).value), m = clean($('#em-' + id).value); if (!w || !m) { toast('비워둘 수 없어요'); return; } x.w = w; x.m = m; editingWord = null; saveDay(day); render(); };
       b.onclick = go; [$('#ew-' + id), $('#em-' + id)].forEach(i => i.onkeydown = e => { if (e.key === 'Enter') go(); if (e.key === 'Escape') { editingWord = null; render(); } });
     });
     app.querySelectorAll('[data-del]').forEach(b => b.onclick = () => { const i = day.words.findIndex(x => x.id === b.dataset.del); const [x] = day.words.splice(i, 1); saveDay(day); setStatus(); render(); toast(`"${x.w}" 삭제됨`); });
@@ -853,7 +865,9 @@ details.setbox > .sets{padding-top:10px}
     else renderResult();
   }
 
-  loadLocal(); setStatus(); render();
+  loadLocal();
+  { const fixed = cleanAll(); if (fixed) { saveLocal(); setTimeout(() => toast(`깨진 문자가 섞인 항목 ${fixed}개를 정리했어요`), 300); } }
+  setStatus(); render();
 })();
 </script>
 
