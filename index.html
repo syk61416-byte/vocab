@@ -146,7 +146,7 @@ textarea{min-height:130px;font-family:var(--f-num);font-size:16px;resize:vertica
 .backup{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:14px}
 .vh{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;pointer-events:none}
 .wrap,.backup{min-width:0}
-.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom, 0px));background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:8px;font-size:14px;max-width:calc(100% - 32px)}
+.toast{z-index:60;position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom, 0px));background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:8px;font-size:14px;max-width:calc(100% - 32px)}
 
 /* settings as visible segmented rows: every choice on screen, current one filled */
 .olist{display:flex;flex-direction:column}
@@ -184,6 +184,28 @@ details.setbox > .sets{padding-top:10px}
 .dayacts .danger{margin-left:auto}
 .actionbar{position:sticky;bottom:0;display:flex;gap:8px;background:var(--surface);padding-block:10px calc(10px + env(safe-area-inset-bottom, 0px));border-top:1px solid var(--line);margin:0 -18px -18px;padding-left:18px;padding-right:18px;border-radius:0 0 var(--r) var(--r)}
 .actionbar .btn{flex:1}
+.btn.danger-fill{background:var(--bad);border-color:var(--bad);color:var(--surface);font-weight:600}
+.btn.danger-fill:disabled{opacity:.4}
+/* 선택 삭제 모드 */
+.selb{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border:0;background:none;padding:0;cursor:pointer;flex:none}
+.selb .dot{width:20px;height:20px;border-radius:50%;border:2px solid var(--muted);display:flex;align-items:center;justify-content:center;color:transparent}
+.selb .dot svg{width:12px;height:12px}
+.selb[aria-pressed="true"] .dot{background:var(--bad);border-color:var(--bad);color:var(--surface)}
+.row.picking{cursor:pointer}
+.row.picked{background:var(--bad-soft);border-radius:6px}
+.selbar{align-items:center;flex-wrap:wrap}
+.selbar .selcount{flex:1 1 auto;font-weight:600;font-size:14px;font-variant-numeric:tabular-nums}
+.selbar .btn{flex:0 0 auto}
+.selhint{font-size:13px;color:var(--muted);background:var(--bg);border:1px dashed var(--line);border-radius:8px;padding:8px 12px}
+/* 확인 모달 */
+.modal{position:fixed;inset:0;z-index:50;background:color-mix(in srgb, #000 50%, transparent);display:flex;align-items:center;justify-content:center;padding:16px max(16px, env(safe-area-inset-right, 0px)) calc(16px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px))}
+.mcard{background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:20px;width:min(380px,100%);display:flex;flex-direction:column;gap:12px;box-shadow:0 12px 40px color-mix(in srgb, #000 35%, transparent)}
+.mcard strong{font-size:17px}
+.mbody{font-size:14px;color:var(--muted);line-height:1.6;overflow-wrap:anywhere}
+.mbody b{color:var(--ink)}
+.mlist{margin:6px 0 0;padding:8px 12px;background:var(--bg);border-radius:8px;max-height:32vh;overflow:auto;list-style:none;display:flex;flex-direction:column;gap:2px}
+.mbtns{display:flex;gap:8px}
+.mbtns .btn{flex:1;padding:10px 14px}
 @media (max-width:540px){
   .days.scroll{flex-wrap:nowrap;overflow-x:auto;scroll-snap-type:x proximity;padding-bottom:4px;margin-right:calc(-1 * max(16px, env(safe-area-inset-left, 0px)));-webkit-overflow-scrolling:touch}
   .days.scroll .chip{flex:none;scroll-snap-align:start}
@@ -197,7 +219,7 @@ details.setbox > .sets{padding-top:10px}
   .addform .btn{grid-column:1 / -1}
   .opts{grid-template-columns:1fr}
   .row{grid-template-columns:2.1em minmax(0,1fr) auto;row-gap:2px}
-  .row > .chk, .row > .idx{grid-row:1 / span 2}
+  .row > .chk, .row > .idx, .row > .selb{grid-row:1 / span 2}
   .row .m{grid-column:2;grid-row:2}
   .row .acts{grid-column:3;grid-row:1 / span 2}
   .row.editing{grid-template-columns:minmax(0,1fr);row-gap:8px;padding:12px 0}
@@ -230,6 +252,10 @@ details.setbox > .sets{padding-top:10px}
     <span class="resbtns"><button class="btn sm" id="exportBtn">백업 파일 받기</button><button class="btn sm" id="importBtn" type="button">백업 불러오기</button><input type="file" id="importFile" class="vh" tabindex="-1" aria-hidden="true"></span>
   </footer>
 </div>
+<div class="modal" id="modal" hidden role="dialog" aria-modal="true" aria-labelledby="mTitle">
+  <div class="mcard"><strong id="mTitle"></strong><div class="mbody" id="mBody"></div>
+    <div class="mbtns"><button class="btn" id="mCancel" type="button">취소</button><button class="btn danger-fill" id="mOk" type="button">삭제</button></div></div>
+</div>
 <div class="toast" id="toast" hidden></div>
 
 <script>
@@ -240,7 +266,23 @@ details.setbox > .sets{padding-top:10px}
   let curDay = null;
   let editingWord = null;
   let bulkOpen = false;
-  let armedDelete = null;
+  let selecting = false;           // 선택 삭제 모드
+  const picked = new Set();        // 선택된 단어 id
+  // 삭제 확인 모달: 결과를 Promise<boolean>으로 돌려준다
+  function confirmModal({ title, html, ok = '삭제' }) {
+    return new Promise(resolve => {
+      const m = $('#modal'), prevFocus = document.activeElement;
+      $('#mTitle').textContent = title; $('#mBody').innerHTML = html; $('#mOk').textContent = ok;
+      m.hidden = false; $('#mCancel').focus();
+      const close = v => { m.hidden = true; document.removeEventListener('keydown', onKey, true); m.onclick = null; try { prevFocus && prevFocus.focus({ preventScroll: true }); } catch (e) {} resolve(v); };
+      const onKey = e => { if (e.key === 'Escape') { e.preventDefault(); close(false); } else if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); close(document.activeElement === $('#mOk')); } };
+      document.addEventListener('keydown', onKey, true);
+      $('#mOk').onclick = () => close(true); $('#mCancel').onclick = () => close(false);
+      m.onclick = e => { if (e.target === m) close(false); };
+    });
+  }
+  const DOT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>';
+  function exitSelect() { selecting = false; picked.clear(); }
   const setup = { sel: new Set(), dir: 'en', type: 'mc', count: 'all' };
   let quiz = null;
 
@@ -585,6 +627,8 @@ details.setbox > .sets{padding-top:10px}
     const chips = list.map(d => `<button class="chip" aria-pressed="${d.id === curDay}" data-day="${d.id}">${esc(d.name)} <span class="num">${d.words.length}</span></button>`).join('');
     const rows = day.words.map((x, i) => editingWord === x.id
       ? `<div class="row editing" data-w="${x.id}"><span class="idx num">${i + 1}</span><input type="text" id="ew-${x.id}" value="${esc(x.w)}" aria-label="단어"><input type="text" id="em-${x.id}" value="${esc(x.m)}" aria-label="뜻"><span class="acts"><button class="btn sm" data-cancel>취소</button><button class="btn sm primary" data-save="${x.id}">저장</button></span></div>`
+      : selecting
+      ? `<div class="row picking ${picked.has(x.id) ? 'picked' : ''}" data-w="${x.id}" data-pickrow="${x.id}"><button type="button" class="selb" data-pick="${x.id}" aria-pressed="${picked.has(x.id)}" aria-label="${esc(x.w)} 선택"><span class="dot">${DOT}</span></button><span class="w">${esc(x.w)}</span><span class="m">${esc(x.m)}</span><span class="acts"></span></div>`
       : `<div class="row" data-w="${x.id}">${chkBtn(x.id, x.w)}<span class="w">${esc(x.w)}</span><span class="m">${esc(x.m)}</span><span class="acts">${TTS.ok ? `<button class="spk" data-say="${x.id}" aria-label="${esc(x.w)} 듣기" title="듣기">${SPK}</button>` : ''}<button class="ghost" data-edit="${x.id}">수정</button><button class="ghost" data-del="${x.id}">삭제</button></span></div>`).join('');
     app.innerHTML = `
       <div class="field"><span class="label">Day</span><div class="days scroll" id="dayChips">${chips}<button class="chip add" id="addDay">+ Day 추가</button></div></div>
@@ -592,19 +636,21 @@ details.setbox > .sets{padding-top:10px}
         <div class="dayhead">
           <input class="dayname" id="dayname" value="${esc(day.name)}" aria-label="Day 이름">
           <span class="sub num" id="dayCount">${day.words.length}단어 · 체크 ${day.words.filter(w => w.checked).length}</span>
-          <div class="dayacts">
+          ${selecting ? '' : `<div class="dayacts">
           <button class="btn sm" id="testThis" ${day.words.length ? '' : 'disabled'}>테스트</button>
           <button class="btn sm" id="toText" ${day.words.length ? '' : 'disabled'}>텍스트로 뽑기</button>
-          <button class="btn sm danger ${armedDelete === day.id ? 'armed' : ''}" id="delDay">${armedDelete === day.id ? '정말 삭제' : 'Day 삭제'}</button>
-          </div>
+          <button class="btn sm" id="selMode" ${day.words.length ? '' : 'disabled'}>선택</button>
+          <button class="btn sm danger" id="delDay">Day 삭제</button>
+          </div>`}
         </div>
-        ${TTS.ok ? '<div class="listen"><div id="playerBox" class="listen-in"></div><div id="ttsSet"></div></div>' : ''}
-        <form class="addform" id="addform" autocomplete="off">
+        ${selecting ? '<div class="selhint">삭제할 단어를 눌러 선택하세요.</div>' : ''}
+        ${TTS.ok && !selecting ? '<div class="listen"><div id="playerBox" class="listen-in"></div><div id="ttsSet"></div></div>' : ''}
+        <form class="addform" id="addform" autocomplete="off" ${selecting ? 'hidden' : ''}>
           <input type="text" id="nw" placeholder="단어 (예: abundant)" aria-label="단어">
           <input type="text" id="nm" placeholder="뜻 (예: 풍부한)" aria-label="뜻">
           <button class="btn primary" type="submit">추가</button>
         </form>
-        <div class="bulk">
+        <div class="bulk" ${selecting ? 'hidden' : ''}>
           <button class="ghost" id="bulkToggle" style="align-self:flex-start">${bulkOpen ? '여러 개 붙여넣기 닫기' : '여러 개 한 번에 붙여넣기'}</button>
           <div id="bulkBox" ${bulkOpen ? '' : 'hidden'} class="bulk">
             <textarea id="bulkText" placeholder="abundant - 풍부한&#10;reluctant, 꺼리는&#10;inevitable	피할 수 없는"></textarea>
@@ -613,19 +659,41 @@ details.setbox > .sets{padding-top:10px}
           </div>
         </div>
         <div class="list">${rows || `<div class="empty">이 Day에는 아직 단어가 없어요. 위에서 추가하세요.</div>`}</div>
+        ${selecting ? `<div class="actionbar selbar"><span class="selcount" id="selCount">${picked.size}개 선택</span>
+          <button class="btn sm" id="selAllW" type="button">${picked.size === day.words.length && picked.size ? '전체 해제' : '전체 선택'}</button>
+          <button class="btn sm" id="selCancel" type="button">취소</button>
+          <button class="btn sm danger-fill" id="selDel" type="button" ${picked.size ? '' : 'disabled'}>삭제</button></div>` : ''}
       </section>`;
 
-    app.querySelectorAll('[data-day]').forEach(b => b.onclick = () => { if (curDay !== b.dataset.day) stopPlayer(); curDay = b.dataset.day; editingWord = null; armedDelete = null; render(); });
+    app.querySelectorAll('[data-day]').forEach(b => b.onclick = () => { if (curDay !== b.dataset.day) stopPlayer(); curDay = b.dataset.day; editingWord = null; exitSelect(); render(); });
     $('#addDay').onclick = () => { addDay(); editingWord = null; render(); $('#nw')?.focus(); };
     const dn = $('#dayname');
     dn.onchange = () => { const v = clean(dn.value); if (v && v !== day.name) { day.name = v; saveDay(day); render(); } else dn.value = day.name; };
     dn.onkeydown = e => { if (e.key === 'Enter') dn.blur(); };
-    $('#delDay').onclick = () => {
-      if (armedDelete !== day.id) { armedDelete = day.id; render(); setTimeout(() => { if (armedDelete === day.id) { armedDelete = null; if (view === 'words') render(); } }, 3500); return; }
-      if (player && player.dayId === day.id) stopPlayer(); days = days.filter(d => d.id !== day.id); setup.sel.delete(day.id); removeDay(day.id); armedDelete = null; curDay = null; setStatus(); render(); toast(`${day.name} 삭제됨`);
+    $('#delDay') && ($('#delDay').onclick = async () => {
+      const ok = await confirmModal({ title: `${day.name}을(를) 삭제할까요?`, html: day.words.length ? `이 Day의 단어 <b>${day.words.length}개</b>도 함께 삭제돼요. 백업 파일이 없으면 되돌릴 수 없어요.` : '빈 Day를 삭제해요.', ok: 'Day 삭제' });
+      if (!ok) return;
+      if (player && player.dayId === day.id) stopPlayer(); days = days.filter(d => d.id !== day.id); setup.sel.delete(day.id); removeDay(day.id); curDay = null; setStatus(); render(); toast(`${day.name} 삭제됨`);
+    });
+    $('#testThis') && ($('#testThis').onclick = () => { setup.sel = new Set([day.id]); switchTab('test'); });
+    $('#toText') && ($('#toText').onclick = () => { stopPlayer(); exportOpt.sel = [day.id]; view = 'export'; render(); });
+    $('#selMode') && ($('#selMode').onclick = () => { stopPlayer(); editingWord = null; selecting = true; picked.clear(); render(); });
+    // 선택 모드: 줄 아무 곳이나 눌러도 선택/해제. 화면 전체를 다시 그리지 않고 표시만 바꾼다
+    const paintSel = () => {
+      app.querySelectorAll('[data-pickrow]').forEach(r => { const on = picked.has(r.dataset.pickrow); r.classList.toggle('picked', on); r.querySelector('[data-pick]').setAttribute('aria-pressed', String(on)); });
+      $('#selCount').textContent = `${picked.size}개 선택`; $('#selDel').disabled = !picked.size;
+      $('#selAllW').textContent = picked.size === day.words.length && picked.size ? '전체 해제' : '전체 선택';
     };
-    $('#testThis').onclick = () => { setup.sel = new Set([day.id]); switchTab('test'); };
-    $('#toText').onclick = () => { stopPlayer(); exportOpt.sel = [day.id]; view = 'export'; render(); };
+    app.querySelectorAll('[data-pickrow]').forEach(r => r.onclick = () => { const id = r.dataset.pickrow; picked.has(id) ? picked.delete(id) : picked.add(id); paintSel(); });
+    $('#selAllW') && ($('#selAllW').onclick = () => { if (picked.size === day.words.length) picked.clear(); else day.words.forEach(w => picked.add(w.id)); paintSel(); });
+    $('#selCancel') && ($('#selCancel').onclick = () => { exitSelect(); render(); });
+    $('#selDel') && ($('#selDel').onclick = async () => {
+      const ws = day.words.filter(w => picked.has(w.id)); if (!ws.length) return;
+      const shown = ws.slice(0, 6).map(w => `<li><b>${esc(w.w)}</b> · ${esc(w.m)}</li>`).join('') + (ws.length > 6 ? `<li>외 ${ws.length - 6}개</li>` : '');
+      const ok = await confirmModal({ title: `단어 ${ws.length}개를 삭제할까요?`, html: `백업 파일이 없으면 되돌릴 수 없어요.<ul class="mlist">${shown}</ul>`, ok: `${ws.length}개 삭제` });
+      if (!ok) return;
+      day.words = day.words.filter(w => !picked.has(w.id)); saveDay(day); exitSelect(); setStatus(); render(); toast(`${ws.length}개 삭제했어요`);
+    });
     $('#addform').onsubmit = e => {
       e.preventDefault();
       const w = clean($('#nw').value), m = clean($('#nm').value);
@@ -645,7 +713,12 @@ details.setbox > .sets{padding-top:10px}
       const id = b.dataset.save, go = () => { const x = day.words.find(x => x.id === id); const w = clean($('#ew-' + id).value), m = clean($('#em-' + id).value); if (!w || !m) { toast('비워둘 수 없어요'); return; } x.w = w; x.m = m; editingWord = null; saveDay(day); render(); };
       b.onclick = go; [$('#ew-' + id), $('#em-' + id)].forEach(i => i.onkeydown = e => { if (e.key === 'Enter') go(); if (e.key === 'Escape') { editingWord = null; render(); } });
     });
-    app.querySelectorAll('[data-del]').forEach(b => b.onclick = () => { const i = day.words.findIndex(x => x.id === b.dataset.del); const [x] = day.words.splice(i, 1); saveDay(day); setStatus(); render(); toast(`"${x.w}" 삭제됨`); });
+    app.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
+      const x = day.words.find(x => x.id === b.dataset.del); if (!x) return;
+      const ok = await confirmModal({ title: '이 단어를 삭제할까요?', html: `<b>${esc(x.w)}</b> · ${esc(x.m)}` });
+      if (!ok) return;
+      day.words = day.words.filter(w => w.id !== x.id); saveDay(day); setStatus(); render(); toast(`"${x.w}" 삭제됨`);
+    });
     app.querySelectorAll('[data-say]').forEach(b => b.onclick = () => { const x = day.words.find(x => x.id === b.dataset.say); if (x) sayNow(x.w, () => { if (ttsOpt.meaning) setTimeout(() => say(x.m), 350); }); });
     bindChecks(app, () => { const el = $('#dayCount'); if (el) el.textContent = `${day.words.length}단어 · 체크 ${day.words.filter(w => w.checked).length}`; });
     paintPlayer(); paintVoices();
@@ -877,7 +950,7 @@ details.setbox > .sets{padding-top:10px}
 
   // ---------- tabs ----------
   function switchTab(t) {
-    stopPlayer(); cancelSpeech();
+    stopPlayer(); cancelSpeech(); exitSelect();
     view = t === 'words' ? 'words' : 'setup';
     $('#tab-words').setAttribute('aria-selected', t === 'words');
     $('#tab-test').setAttribute('aria-selected', t !== 'words');
