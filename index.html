@@ -545,7 +545,7 @@ details.setbox > .sets{padding-top:10px}
     document.querySelectorAll('.row.speaking').forEach(r => r.classList.remove('speaking'));
     if (!id) return;
     const r = document.querySelector(`.list .row[data-w="${id}"]`);
-    if (r) { r.classList.add('speaking'); try { r.scrollIntoView({ block: 'nearest' }); } catch (e) {} }
+    if (r) r.classList.add('speaking');
   }
   function paintPlayer() {
     const box = $('#playerBox'); if (!box) return;
@@ -581,6 +581,7 @@ details.setbox > .sets{padding-top:10px}
     }
     if (!curDay || !days.find(d => d.id === curDay)) curDay = list[0].id;
     const day = days.find(d => d.id === curDay);
+    const chipX = $('#dayChips')?.scrollLeft || 0;
     const chips = list.map(d => `<button class="chip" aria-pressed="${d.id === curDay}" data-day="${d.id}">${esc(d.name)} <span class="num">${d.words.length}</span></button>`).join('');
     const rows = day.words.map((x, i) => editingWord === x.id
       ? `<div class="row editing" data-w="${x.id}"><span class="idx num">${i + 1}</span><input type="text" id="ew-${x.id}" value="${esc(x.w)}" aria-label="단어"><input type="text" id="em-${x.id}" value="${esc(x.m)}" aria-label="뜻"><span class="acts"><button class="btn sm" data-cancel>취소</button><button class="btn sm primary" data-save="${x.id}">저장</button></span></div>`
@@ -648,7 +649,11 @@ details.setbox > .sets{padding-top:10px}
     app.querySelectorAll('[data-say]').forEach(b => b.onclick = () => { const x = day.words.find(x => x.id === b.dataset.say); if (x) sayNow(x.w, () => { if (ttsOpt.meaning) setTimeout(() => say(x.m), 350); }); });
     bindChecks(app, () => { const el = $('#dayCount'); if (el) el.textContent = `${day.words.length}단어 · 체크 ${day.words.filter(w => w.checked).length}`; });
     paintPlayer(); paintVoices();
-    try { const c = app.querySelector('#dayChips [aria-pressed="true"]'); if (c && c.scrollIntoView && window.matchMedia('(max-width:540px)').matches) c.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (e) {}
+    // Day 줄은 가로 위치만 유지/보정한다(페이지 세로 스크롤은 건드리지 않음)
+    { const wrap = $('#dayChips'), c = wrap && wrap.querySelector('[aria-pressed="true"]');
+      if (wrap) { wrap.scrollLeft = chipX;
+        if (c) { const cr = c.getBoundingClientRect(), wr = wrap.getBoundingClientRect();
+          if (cr.left < wr.left) wrap.scrollLeft += cr.left - wr.left - 8; else if (cr.right > wr.right) wrap.scrollLeft += cr.right - wr.right + 8; } } }
     if (player && player.dayId === day.id) markSpeaking(player.steps[player.cur]?.id);
   }
 
@@ -884,13 +889,19 @@ details.setbox > .sets{padding-top:10px}
   $('#tab-words').onclick = () => switchTab('words');
   $('#tab-test').onclick = () => switchTab('test');
 
+  let lastKey = '';
   function render() {
+    const y = window.scrollY || 0;
     if (view === 'words') renderWords();
     else if (view === 'setup') renderSetup();
     else if (view === 'import') renderImport();
     else if (view === 'export') renderExport();
     else if (view === 'quiz') renderQuiz();
     else renderResult();
+    // 같은 화면을 다시 그린 경우(수정·삭제·저장 등)엔 보던 위치로 되돌린다
+    const key = view + '|' + curDay;
+    if (key === lastKey) window.scrollTo(0, y);
+    lastKey = key;
   }
 
   loadLocal();
