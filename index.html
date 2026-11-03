@@ -560,12 +560,32 @@ details.setbox > .sets{padding-top:10px}
     }
     return steps;
   }
+  // 재생 중에만 화면이 꺼지지 않게(Screen Wake Lock). 지원하지 않는 브라우저에선 조용히 넘어간다
+  let wakeLock = null, wakeReq = false;
+  async function keepAwake(on) {
+    if (!('wakeLock' in navigator)) return;
+    try {
+      if (on) {
+        if (wakeLock || wakeReq) return;
+        wakeReq = true;
+        const lock = await navigator.wakeLock.request('screen');
+        wakeReq = false;
+        if (!player || !player.playing) { lock.release().catch(() => {}); return; }   // 그새 멈췄으면 바로 반납
+        wakeLock = lock;
+        lock.addEventListener('release', () => { if (wakeLock === lock) { wakeLock = null; paintPlayer(); } });
+        paintPlayer();
+      } else if (wakeLock) { const lock = wakeLock; wakeLock = null; await lock.release(); }
+    } catch (e) { wakeReq = false; }
+  }
+  // 다른 앱에 갔다 오면 잠금이 자동 해제되므로, 재생 중이면 다시 요청
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && player && player.playing) keepAwake(true); });
   function playDay(day, startId, only = false) {
     if (!TTS.ok || !day.words.length) return;
     const steps = buildSteps(day, startId, only);
     if (!steps.length) { toast('이 Day에 체크한 단어가 없어요'); return; }
     stopPlayer(); cancelSpeech();
     const p = player = { dayId: day.id, only, steps, cur: 0, playing: true, timer: null };
+    keepAwake(true);
     paintPlayer();
     p.timer = setTimeout(() => { if (player === p && p.playing) stepPlayer(); }, 150);
   }
@@ -579,12 +599,13 @@ details.setbox > .sets{padding-top:10px}
       player.timer = setTimeout(() => { if (t !== ptok || !player) return; player.cur++; stepPlayer(); }, st.gap);
     });
   }
-  function pausePlayer() { if (!player) return; player.playing = false; ptok++; clearTimeout(player.timer); cancelSpeech(); paintPlayer(); }
-  function resumePlayer() { if (!player) return; const p = player; p.playing = true; paintPlayer(); p.timer = setTimeout(() => { if (player === p && p.playing) stepPlayer(); }, 150); }
+  function pausePlayer() { if (!player) return; player.playing = false; ptok++; clearTimeout(player.timer); cancelSpeech(); keepAwake(false); paintPlayer(); }
+  function resumePlayer() { if (!player) return; const p = player; p.playing = true; keepAwake(true); paintPlayer(); p.timer = setTimeout(() => { if (player === p && p.playing) stepPlayer(); }, 150); }
   function stopPlayer() {
     if (player) clearTimeout(player.timer);
     const had = !!player; player = null; ptok++;
     if (had) cancelSpeech();
+    keepAwake(false);
     markSpeaking(null); paintPlayer();
   }
   function markSpeaking(id) {
@@ -606,6 +627,7 @@ details.setbox > .sets{padding-top:10px}
           : player.playing ? `<button class="btn primary sm" id="pPause">일시정지</button>` : `<button class="btn primary sm" id="pResume">이어 듣기</button>`}
         ${mine ? `<button class="btn sm" id="pStop">정지</button>` : ''}
         <span class="now">${w ? `<span class="num">${player.only ? '체크 ' : ''}${pos}</span> · <b>${esc(w.w)}</b> ${esc(w.m)}` : nChk ? '' : '단어를 체크하면 체크한 것만 들을 수 있어요'}</span>
+        ${mine && wakeLock ? '<span class="hint" title="재생하는 동안 화면이 꺼지지 않아요">화면 켜짐 유지</span>' : ''}
       </div>`;
     $('#pPlay') && ($('#pPlay').onclick = () => playDay(day));
     $('#pPlayChk') && ($('#pPlayChk').onclick = () => playDay(day, null, true));
