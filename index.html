@@ -28,6 +28,8 @@
   --ok:#6CC992; --ok-soft:#18332A; --bad:#EE8A7E; --bad-soft:#3A1F1C; color-scheme:dark}
 
 *{box-sizing:border-box}
+#app{display:flex;flex-direction:column;gap:16px;min-width:0}
+.daybar{gap:10px}
 /* hidden 속성은 어떤 display 규칙보다 우선 (모달·입력칸 숨김이 확실히 먹도록) */
 [hidden]{display:none!important}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--f-ui);font-size:15px;line-height:1.55}
@@ -349,7 +351,7 @@ details.setbox > .sets{padding-top:10px}
   function setStatus() {
     const n = days.reduce((s, d) => s + d.words.length, 0);
     const lb = lastBackup();
-    $('#status').textContent = (storageOk ? '이 브라우저에 자동 저장' : '저장 안 됨 (브라우저 저장소 사용 불가)') + ` · Day ${days.length}개 · 단어 ${n}개 · 마지막 백업 ${lb ? fmtDate(lb) : '없음'}`;
+    $('#status').textContent = (storageOk ? '이 브라우저에 자동 저장' : '저장 안 됨 (브라우저 저장소 사용 불가)') + ` · 목록 ${days.length}개 · 단어 ${n}개 · 마지막 백업 ${lb ? fmtDate(lb) : '없음'}`;
   }
   // 다른 탭에서 수정하면 이 탭도 갱신
   window.addEventListener('storage', e => { if (e.key === LKEY) { loadLocal(); setStatus(); if (view === 'words' || view === 'setup') render(); } });
@@ -408,7 +410,7 @@ details.setbox > .sets{padding-top:10px}
     const nw = importing.reduce((s, d) => s + d.words.length, 0), nc = importing.reduce((s, d) => s + d.words.filter(w => w.checked).length, 0);
     app.innerHTML = `<section class="panel">
       <strong>백업 불러오기</strong>
-      <div>파일에 Day ${importing.length}개, 단어 ${nw}개(체크 ${nc}개)가 있어요. 지금 단어장에는 Day ${days.length}개가 있어요.</div>
+      <div>파일에 목록 ${importing.length}개, 단어 ${nw}개(체크 ${nc}개)가 있어요. 지금 단어장에는 목록 ${days.length}개가 있어요.</div>
       <div class="hint">합치기: 같은 이름의 Day는 없는 단어만 더하고, 이미 있는 단어는 파일의 체크 상태로 맞춥니다. 없는 Day는 새로 만듭니다. 덮어쓰기: 지금 단어장을 지우고 파일 내용으로 바꿉니다.</div>
       <div class="resbtns"><button class="btn primary" id="imMerge">합치기</button><button class="btn danger" id="imReplace">덮어쓰기</button><button class="btn" id="imCancel">취소</button></div>
     </section>`;
@@ -420,7 +422,9 @@ details.setbox > .sets{padding-top:10px}
   // ---------- mutations ----------
   function addDay(name) {
     const order = days.reduce((m, d) => Math.max(m, d.order ?? 0), 0) + 1;
-    const d = { id: uid('d'), name: name || `Day ${days.length + 1}`, order, words: [] };
+    // 새 Day 번호는 'Day 숫자' 이름만 세서 정한다(필수숙어처럼 이름을 바꾼 묶음은 번호에서 제외)
+    const nextNo = days.reduce((m, d) => { const k = /^day\s*(\d+)$/i.exec(String(d.name).trim()); return k ? Math.max(m, +k[1]) : m; }, 0) + 1;
+    const d = { id: uid('d'), name: name || `Day ${nextNo}`, order, words: [] };
     days.push(d); curDay = d.id; saveDay(d); setStatus(); return d;
   }
   function parseBulk(text) {
@@ -679,7 +683,7 @@ details.setbox > .sets{padding-top:10px}
       ? `<div class="row picking ${picked.has(x.id) ? 'picked' : ''}" data-w="${x.id}" data-pickrow="${x.id}"><button type="button" class="selb" data-pick="${x.id}" aria-pressed="${picked.has(x.id)}" aria-label="${esc(x.w)} 선택"><span class="dot">${DOT}</span></button><span class="w">${esc(x.w)}</span><span class="m">${esc(x.m)}</span><span class="acts"></span></div>`
       : `<div class="row" data-w="${x.id}">${chkBtn(x.id, x.w)}<span class="w">${esc(x.w)}</span><span class="m">${esc(x.m)}</span><span class="acts">${TTS.ok ? `<button class="spk" data-say="${x.id}" aria-label="${esc(x.w)} 듣기" title="듣기">${SPK}</button>` : ''}<button class="ghost" data-edit="${x.id}">수정</button><button class="ghost" data-del="${x.id}">삭제</button></span></div>`).join('');
     app.innerHTML = `
-      <div class="field"><span class="label">Day</span><div class="days scroll" id="dayChips">${chips}<button class="chip add" id="addDay">+ Day 추가</button></div></div>
+      <div class="field daybar"><span class="label">목록</span><div class="days scroll" id="dayChips">${chips}<button class="chip add" id="addDay">+ Day 추가</button></div></div>
       <section class="panel">
         <div class="dayhead">
           <input class="dayname" id="dayname" value="${esc(day.name)}" aria-label="Day 이름">
