@@ -251,7 +251,7 @@ details.setbox > .sets{padding-top:10px}
   <main id="app"></main>
   <footer class="backup">
     <span class="hint">단어는 이 브라우저에만 저장돼요. 브라우저 데이터를 지우면 사라지니 가끔 백업 파일을 받아 두세요.</span>
-    <span class="resbtns"><button class="btn sm" id="exportBtn">백업 파일 받기</button><button class="btn sm" id="importBtn" type="button">백업 불러오기</button><input type="file" id="importFile" class="vh" tabindex="-1" aria-hidden="true"></span>
+    <span class="resbtns"><button class="btn sm" id="exportBtn">백업 파일 받기</button><button class="btn sm" id="importBtn" type="button">백업 불러오기</button><input type="file" id="importFile" class="vh" tabindex="-1" aria-hidden="true"><button class="btn sm" id="reloadBtn" type="button" title="최신 버전을 다시 받아옵니다. 단어는 그대로예요">새로 불러오기</button></span>
   </footer>
 </div>
 <div class="modal" id="modal" hidden role="dialog" aria-modal="true" aria-labelledby="mTitle">
@@ -452,7 +452,7 @@ details.setbox > .sets{padding-top:10px}
   // ---------- speech (Web Speech API) ----------
   const TTS = { ok: typeof window.speechSynthesis !== 'undefined' && typeof window.SpeechSynthesisUtterance !== 'undefined', voices: [] };
   const SPK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>';
-  const ttsOpt = { srep: 1, meaning: true, rate: 0.9, order: 'seq', follow: false, loop: false };
+  const ttsOpt = { srep: 1, meaning: true, rate: 0.9, order: 'seq', follow: false, loop: false, tilde: 'say' };
   try { Object.assign(ttsOpt, JSON.parse(localStorage.getItem('vocab-tts') || '{}')); } catch (e) {}
   // 예전 설정(단어 반복/뜻 반복 따로)을 세트 반복으로 옮긴다
   if ('mrep' in ttsOpt || 'rep' in ttsOpt) { if (typeof ttsOpt.mrep === 'number') ttsOpt.meaning = ttsOpt.mrep > 0; delete ttsOpt.mrep; delete ttsOpt.rep; delete ttsOpt.auto; }
@@ -495,6 +495,7 @@ details.setbox > .sets{padding-top:10px}
         ${segRow('tts', 'meaning', '뜻', ttsOpt.meaning, [[true, '읽기'], [false, '안 읽기']])}
         ${segRow('tts', 'rate', '속도', ttsOpt.rate, [[0.7, '느리게'], [0.9, '보통'], [1.1, '빠르게']])}
         ${segRow('tts', 'order', '순서', ttsOpt.order, [['seq', '입력 순서'], ['rand', '랜덤']])}
+        ${segRow('tts', 'tilde', '물결(~)', ttsOpt.tilde, [['say', "'뭐뭐'로 읽기"], ['skip', '건너뛰기']])}
         ${segRow('tts', 'loop', '끝나면', ttsOpt.loop, [[false, '멈추기'], [true, '처음부터 계속']])}
         ${segRow('tts', 'follow', '화면 따라가기', ttsOpt.follow, [[false, '끄기'], [true, '켜기']])}
         ${vRow('en-US', '영어 목소리')}
@@ -513,7 +514,9 @@ details.setbox > .sets{padding-top:10px}
   }
   // 읽기 전 다듬기: ~ 는 지우고, / 는 쉼표로. 쉼표·세미콜론 단위로 나눠 한 조각씩 읽는다
   function speechChunks(text) {
-    const t = String(text).replace(/~/g, ' ').replace(/\s*\/\s*/g, ', ').replace(/\s{2,}/g, ' ').trim();
+    // 한글 뜻의 ~ 는 '뭐뭐'로 바꿔 읽는다(뒤 조사와 붙여서: ~에서 → 뭐뭐에서). 영어 쪽 ~ 는 건너뛴다
+    const ko = /[\uAC00-\uD7A3]/.test(String(text));
+    const t = String(text).replace(/[~～∼]\s*/g, ko && ttsOpt.tilde === 'say' ? '뭐뭐' : ' ').replace(/\s*\/\s*/g, ', ').replace(/\s{2,}/g, ' ').trim();
     const parts = t.split(/\s*[,;，、]\s*/).map(x => x.trim()).filter(Boolean);
     return parts.length ? parts : [t];
   }
@@ -920,12 +923,13 @@ details.setbox > .sets{padding-top:10px}
   });
 
   // ---------- text export (for text-reader apps) ----------
-  const exportOpt = { sel: [], only: false, srep: 1, meaning: true, gap: 2, style: 'blank', title: true, order: 'seq', num: false };
+  const exportOpt = { sel: [], only: false, srep: 1, meaning: true, gap: 2, style: 'blank', title: true, order: 'seq', num: false, tilde: 'keep' };
   try { const o = JSON.parse(localStorage.getItem('vocab-export') || '{}'); delete o.sel; if ('mrep' in o || 'rep' in o) { if (typeof o.mrep === 'number') o.meaning = o.mrep > 0; delete o.mrep; delete o.rep; } Object.assign(exportOpt, o); } catch (e) {}
   const saveExportOpt = () => { try { const { sel, ...rest } = exportOpt; localStorage.setItem('vocab-export', JSON.stringify(rest)); } catch (e) {} };
   let exportSetOpen = false;
   const exportSummary = () => `${exportOpt.meaning ? '단어+뜻' : '단어만'} ${exportOpt.srep}회 · 간격 ${exportOpt.gap}줄${({ dot: '(마침표)', comma: '(쉼표)' })[exportOpt.style] || ''} · ${exportOpt.order === 'rand' ? '랜덤' : '입력 순서'}`;
   const withDot = t => /[.!?。…]$/.test(t.trim()) ? t.trim() : t.trim() + '.';
+  const tildeText = t => exportOpt.tilde === 'say' && /[\uAC00-\uD7A3]/.test(t) ? t.replace(/[~～∼]\s*/g, '뭐뭐') : t;
   function buildText() {
     const out = [];
     const gapLines = () => { for (let k = 0; k < exportOpt.gap; k++) out.push(({ dot: '.', comma: ',' })[exportOpt.style] || ''); };
@@ -938,7 +942,7 @@ details.setbox > .sets{padding-top:10px}
         // 단어→뜻 세트를 srep번 반복. 반복 사이엔 간격 줄 1개, 다음 단어 전엔 설정한 간격만큼
         for (let r = 0; r < exportOpt.srep; r++) {
           out.push((exportOpt.num && r === 0 ? `${i + 1}. ` : '') + withDot(w.w));
-          if (exportOpt.meaning) out.push(withDot(w.m));
+          if (exportOpt.meaning) out.push(withDot(tildeText(w.m)));
           if (r < exportOpt.srep - 1) out.push(({ dot: '.', comma: ',' })[exportOpt.style] || '');
         }
         gapLines();
@@ -968,6 +972,7 @@ details.setbox > .sets{padding-top:10px}
           ${segRow('export', 'style', '간격 모양', exportOpt.style, [['blank', '빈 줄'], ['dot', '마침표'], ['comma', '쉼표']])}
           ${segRow('export', 'order', '순서', exportOpt.order, [['seq', '입력 순서'], ['rand', '랜덤']])}
           ${segRow('export', 'title', 'Day 제목', exportOpt.title, [[true, '넣기'], [false, '빼기']])}
+          ${segRow('export', 'tilde', '물결(~)', exportOpt.tilde, [['keep', '그대로'], ['say', "'뭐뭐'로 바꾸기"]])}
           ${segRow('export', 'num', '번호', exportOpt.num, [[false, '빼기'], [true, '넣기']])}
         </div>
         <div class="hint">앱이 빈 줄을 무시하고 바로 이어 읽으면 간격 모양을 "쉼표"나 "마침표"로 바꾸고, 간격 줄 수를 늘려 길이를 조절해 보세요.</div>
@@ -1006,6 +1011,8 @@ details.setbox > .sets{padding-top:10px}
     render();
   }
   $('#exportBtn').onclick = exportBackup;
+  // 홈 화면 웹앱엔 새로고침 버튼이 없어서 직접 제공. 주소에 매번 다른 값을 붙여 캐시된 예전 파일 대신 새 파일을 받는다
+  $('#reloadBtn').onclick = () => { stopPlayer(); try { location.replace(location.pathname + '?v=' + Date.now()); } catch (e) { location.reload(); } };
   $('#importBtn').onclick = () => $('#importFile').click();
   $('#importFile').onchange = e => { const f = e.target.files[0]; if (f) readImport(f); e.target.value = ''; };
   $('#tab-words').onclick = () => switchTab('words');
