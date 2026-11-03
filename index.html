@@ -452,7 +452,7 @@ details.setbox > .sets{padding-top:10px}
   // ---------- speech (Web Speech API) ----------
   const TTS = { ok: typeof window.speechSynthesis !== 'undefined' && typeof window.SpeechSynthesisUtterance !== 'undefined', voices: [] };
   const SPK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>';
-  const ttsOpt = { srep: 1, meaning: true, rate: 0.9, order: 'seq', follow: false };
+  const ttsOpt = { srep: 1, meaning: true, rate: 0.9, order: 'seq', follow: false, loop: false };
   try { Object.assign(ttsOpt, JSON.parse(localStorage.getItem('vocab-tts') || '{}')); } catch (e) {}
   // 예전 설정(단어 반복/뜻 반복 따로)을 세트 반복으로 옮긴다
   if ('mrep' in ttsOpt || 'rep' in ttsOpt) { if (typeof ttsOpt.mrep === 'number') ttsOpt.meaning = ttsOpt.mrep > 0; delete ttsOpt.mrep; delete ttsOpt.rep; delete ttsOpt.auto; }
@@ -478,7 +478,7 @@ details.setbox > .sets{padding-top:10px}
     return exact.find(x => x.default) || exact[0] || list[0] || null;
   }
   let ttsSetOpen = false;
-  const ttsSummary = () => `${ttsOpt.meaning ? '단어+뜻' : '단어만'} ${ttsOpt.srep}회 · ${({ 0.7: '느리게', 0.9: '보통', 1.1: '빠르게' })[ttsOpt.rate] || '보통'} · ${ttsOpt.order === 'rand' ? '랜덤' : '순서대로'}${ttsOpt.follow ? ' · 따라가기' : ''}`;
+  const ttsSummary = () => `${ttsOpt.meaning ? '단어+뜻' : '단어만'} ${ttsOpt.srep}회 · ${({ 0.7: '느리게', 0.9: '보통', 1.1: '빠르게' })[ttsOpt.rate] || '보통'} · ${ttsOpt.order === 'rand' ? '랜덤' : '순서대로'}${ttsOpt.follow ? ' · 따라가기' : ''}${ttsOpt.loop ? ' · 계속 반복' : ''}`;
   // 설정 상자는 재생 중에도 다시 그리지 않는다(선택창이 닫히지 않도록)
   function paintVoices() {
     const box = $('#ttsSet'); if (!box || !TTS.ok) return;
@@ -495,6 +495,7 @@ details.setbox > .sets{padding-top:10px}
         ${segRow('tts', 'meaning', '뜻', ttsOpt.meaning, [[true, '읽기'], [false, '안 읽기']])}
         ${segRow('tts', 'rate', '속도', ttsOpt.rate, [[0.7, '느리게'], [0.9, '보통'], [1.1, '빠르게']])}
         ${segRow('tts', 'order', '순서', ttsOpt.order, [['seq', '입력 순서'], ['rand', '랜덤']])}
+        ${segRow('tts', 'loop', '끝나면', ttsOpt.loop, [[false, '멈추기'], [true, '처음부터 계속']])}
         ${segRow('tts', 'follow', '화면 따라가기', ttsOpt.follow, [[false, '끄기'], [true, '켜기']])}
         ${vRow('en-US', '영어 목소리')}
         ${vRow('ko-KR', '한국어 목소리')}
@@ -592,7 +593,13 @@ details.setbox > .sets{padding-top:10px}
   }
   function stepPlayer() {
     if (!player || !player.playing) return;
-    if (player.cur >= player.steps.length) { stopPlayer(); toast('다 읽었어요'); return; }
+    if (player.cur >= player.steps.length) {
+      const day = days.find(d => d.id === player.dayId);
+      // 계속 반복: 목록을 새로 만들어(랜덤이면 다시 섞고, 그사이 추가·체크 변경도 반영) 처음부터
+      const again = ttsOpt.loop && day ? buildSteps(day, null, player.only) : [];
+      if (!again.length) { stopPlayer(); toast('다 읽었어요'); return; }
+      player.steps = again; player.cur = 0; player.round = (player.round || 1) + 1; player.followId = null;
+    }
     const st = player.steps[player.cur], t = ++ptok;
     markSpeaking(st.id); paintPlayer();
     say(st.text, () => {
@@ -634,7 +641,7 @@ details.setbox > .sets{padding-top:10px}
         ${!mine ? `<button class="btn primary sm" id="pPlay" ${day.words.length ? '' : 'disabled'}>전체 듣기</button><button class="btn sm" id="pPlayChk" ${nChk ? '' : 'disabled'}>체크만 듣기 <span class="num">${nChk}</span></button>`
           : player.playing ? `<button class="btn primary sm" id="pPause">일시정지</button>` : `<button class="btn primary sm" id="pResume">이어 듣기</button>`}
         ${mine ? `<button class="btn sm" id="pStop">정지</button>` : ''}
-        <span class="now">${w ? `<span class="num">${player.only ? '체크 ' : ''}${pos}</span> · <b>${esc(w.w)}</b> ${esc(w.m)}` : nChk ? '' : '단어를 체크하면 체크한 것만 들을 수 있어요'}</span>
+        <span class="now">${w ? `<span class="num">${player.only ? '체크 ' : ''}${pos}${player.round > 1 ? ` · ${player.round}바퀴` : ''}</span> · <b>${esc(w.w)}</b> ${esc(w.m)}` : nChk ? '' : '단어를 체크하면 체크한 것만 들을 수 있어요'}</span>
         ${mine && wakeLock ? '<span class="hint" title="재생하는 동안 화면이 꺼지지 않아요">화면 켜짐 유지</span>' : ''}
       </div>`;
     $('#pPlay') && ($('#pPlay').onclick = () => playDay(day));
