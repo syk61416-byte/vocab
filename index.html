@@ -506,7 +506,7 @@ details.setbox > .sets{padding-top:10px}
     bindSegs(box, (k, v) => {
       ttsOpt[k] = v; saveTts(); $('#ttsSum').textContent = ttsSummary();
       const day = days.find(d => d.id === curDay);
-      if (player && day && player.dayId === day.id && k !== 'rate') { const cid = player.steps[player.cur]?.id; const was = player.playing; playDay(day, ttsOpt.order === 'seq' ? cid : null); if (!was) pausePlayer(); }
+      if (player && day && player.dayId === day.id && k !== 'rate') { const cid = player.steps[player.cur]?.id; const was = player.playing; playDay(day, ttsOpt.order === 'seq' ? cid : null, player.only); if (!was) pausePlayer(); }
     });
   }
   // 읽기 전 다듬기: ~ 는 지우고, / 는 쉼표로. 쉼표·세미콜론 단위로 나눠 한 조각씩 읽는다
@@ -545,8 +545,8 @@ details.setbox > .sets{padding-top:10px}
 
   // Day 전체 읽기 플레이어: 단계 목록을 만들고 한 문장씩 이어서 읽는다
   let player = null, ptok = 0;
-  function buildSteps(day, startId) {
-    let ws = day.words.slice();
+  function buildSteps(day, startId, only) {
+    let ws = only ? day.words.filter(w => w.checked) : day.words.slice();
     if (ttsOpt.order === 'rand') ws = shuffle(ws);
     else if (startId) { const k = ws.findIndex(w => w.id === startId); if (k > 0) ws = ws.slice(k); }
     const steps = [];
@@ -560,10 +560,12 @@ details.setbox > .sets{padding-top:10px}
     }
     return steps;
   }
-  function playDay(day, startId) {
+  function playDay(day, startId, only = false) {
     if (!TTS.ok || !day.words.length) return;
+    const steps = buildSteps(day, startId, only);
+    if (!steps.length) { toast('이 Day에 체크한 단어가 없어요'); return; }
     stopPlayer(); cancelSpeech();
-    const p = player = { dayId: day.id, steps: buildSteps(day, startId), cur: 0, playing: true, timer: null };
+    const p = player = { dayId: day.id, only, steps, cur: 0, playing: true, timer: null };
     paintPlayer();
     p.timer = setTimeout(() => { if (player === p && p.playing) stepPlayer(); }, 150);
   }
@@ -597,14 +599,16 @@ details.setbox > .sets{padding-top:10px}
     const mine = player && player.dayId === day.id;
     const st = mine ? player.steps[Math.min(player.cur, player.steps.length - 1)] : null;
     const w = st ? day.words.find(x => x.id === st.id) : null;
+    const nChk = day.words.filter(x => x.checked).length;
     const pos = mine ? `${new Set(player.steps.slice(0, player.cur + 1).map(s => s.id)).size} / ${new Set(player.steps.map(s => s.id)).size}` : '';
     box.innerHTML = `<div class="top">
-        ${!mine ? `<button class="btn primary sm" id="pPlay" ${day.words.length ? '' : 'disabled'}>전체 듣기</button>`
+        ${!mine ? `<button class="btn primary sm" id="pPlay" ${day.words.length ? '' : 'disabled'}>전체 듣기</button><button class="btn sm" id="pPlayChk" ${nChk ? '' : 'disabled'}>체크만 듣기 <span class="num">${nChk}</span></button>`
           : player.playing ? `<button class="btn primary sm" id="pPause">일시정지</button>` : `<button class="btn primary sm" id="pResume">이어 듣기</button>`}
         ${mine ? `<button class="btn sm" id="pStop">정지</button>` : ''}
-        <span class="now">${w ? `<span class="num">${pos}</span> · <b>${esc(w.w)}</b> ${esc(w.m)}` : '이 Day를 처음부터 읽어줘요'}</span>
+        <span class="now">${w ? `<span class="num">${player.only ? '체크 ' : ''}${pos}</span> · <b>${esc(w.w)}</b> ${esc(w.m)}` : nChk ? '' : '단어를 체크하면 체크한 것만 들을 수 있어요'}</span>
       </div>`;
     $('#pPlay') && ($('#pPlay').onclick = () => playDay(day));
+    $('#pPlayChk') && ($('#pPlayChk').onclick = () => playDay(day, null, true));
     $('#pPause') && ($('#pPause').onclick = pausePlayer);
     $('#pResume') && ($('#pResume').onclick = resumePlayer);
     $('#pStop') && ($('#pStop').onclick = stopPlayer);
@@ -722,7 +726,7 @@ details.setbox > .sets{padding-top:10px}
       day.words = day.words.filter(w => w.id !== x.id); saveDay(day); setStatus(); render(); toast(`"${x.w}" 삭제됨`);
     });
     app.querySelectorAll('[data-say]').forEach(b => b.onclick = () => { const x = day.words.find(x => x.id === b.dataset.say); if (x) sayNow(x.w, () => { if (ttsOpt.meaning) setTimeout(() => say(x.m), 350); }); });
-    bindChecks(app, () => { const el = $('#dayCount'); if (el) el.textContent = `${day.words.length}단어 · 체크 ${day.words.filter(w => w.checked).length}`; });
+    bindChecks(app, () => { const el = $('#dayCount'); if (el) el.textContent = `${day.words.length}단어 · 체크 ${day.words.filter(w => w.checked).length}`; if (!player) paintPlayer(); });
     paintPlayer(); paintVoices();
     // Day 줄은 가로 위치만 유지/보정한다(페이지 세로 스크롤은 건드리지 않음)
     { const wrap = $('#dayChips'), c = wrap && wrap.querySelector('[aria-pressed="true"]');
@@ -879,7 +883,7 @@ details.setbox > .sets{padding-top:10px}
   });
 
   // ---------- text export (for text-reader apps) ----------
-  const exportOpt = { sel: [], srep: 1, meaning: true, gap: 2, style: 'blank', title: true, order: 'seq', num: false };
+  const exportOpt = { sel: [], only: false, srep: 1, meaning: true, gap: 2, style: 'blank', title: true, order: 'seq', num: false };
   try { const o = JSON.parse(localStorage.getItem('vocab-export') || '{}'); delete o.sel; if ('mrep' in o || 'rep' in o) { if (typeof o.mrep === 'number') o.meaning = o.mrep > 0; delete o.mrep; delete o.rep; } Object.assign(exportOpt, o); } catch (e) {}
   const saveExportOpt = () => { try { const { sel, ...rest } = exportOpt; localStorage.setItem('vocab-export', JSON.stringify(rest)); } catch (e) {} };
   let exportSetOpen = false;
@@ -888,10 +892,11 @@ details.setbox > .sets{padding-top:10px}
   function buildText() {
     const out = [];
     const gapLines = () => { for (let k = 0; k < exportOpt.gap; k++) out.push(({ dot: '.', comma: ',' })[exportOpt.style] || ''); };
-    const chosen = sorted().filter(d => exportOpt.sel.includes(d.id) && d.words.length);
+    const pick = d => exportOpt.only ? d.words.filter(w => w.checked) : d.words;
+    const chosen = sorted().filter(d => exportOpt.sel.includes(d.id) && pick(d).length);
     chosen.forEach((d, di) => {
       if (exportOpt.title) { out.push(withDot(d.name)); gapLines(); }
-      const ws = exportOpt.order === 'rand' ? shuffle(d.words) : d.words;
+      const ws = exportOpt.order === 'rand' ? shuffle(pick(d)) : pick(d);
       ws.forEach((w, i) => {
         // 단어→뜻 세트를 srep번 반복. 반복 사이엔 간격 줄 1개, 다음 단어 전엔 설정한 간격만큼
         for (let r = 0; r < exportOpt.srep; r++) {
@@ -910,11 +915,14 @@ details.setbox > .sets{padding-top:10px}
     const list = sorted().filter(d => d.words.length);
     exportOpt.sel = exportOpt.sel.filter(id => list.find(d => d.id === id));
     const text = buildText();
-    const nWords = list.filter(d => exportOpt.sel.includes(d.id)).reduce((s, d) => s + d.words.length, 0);
+    const cnt = d => exportOpt.only ? d.words.filter(w => w.checked).length : d.words.length;
+    const nWords = list.filter(d => exportOpt.sel.includes(d.id)).reduce((s, d) => s + cnt(d), 0);
+    const nChkSel = list.filter(d => exportOpt.sel.includes(d.id)).reduce((s, d) => s + d.words.filter(w => w.checked).length, 0);
     app.innerHTML = `<section class="panel">
       <div class="dayhead"><strong style="font-size:18px;flex:1">텍스트로 뽑기</strong><button class="btn sm" id="xBack">단어장으로</button></div>
       <div class="hint">텍스트 리더 앱용이에요. 단어와 뜻 끝에 마침표를 붙이고, 세트 사이에 간격 줄을 넣어 쉬어 가며 읽게 해요.</div>
-      <div class="field"><span class="label">범위</span><div class="days">${list.map(d => `<button class="chip" data-xs="${d.id}" aria-pressed="${exportOpt.sel.includes(d.id)}">${esc(d.name)} <span class="num">${d.words.length}</span></button>`).join('')}</div></div>
+      <div class="field"><span class="label">범위</span><div class="days">${list.map(d => `<button class="chip" data-xs="${d.id}" aria-pressed="${exportOpt.sel.includes(d.id)}">${esc(d.name)} <span class="num">${exportOpt.only ? '✓' + cnt(d) : cnt(d)}</span></button>`).join('')}</div></div>
+      <div class="olist" id="xTarget">${segRow('xt', 'only', '대상', exportOpt.only, [[false, '전체 단어'], [true, `체크한 단어 (${nChkSel})`]])}</div>
       <details class="setbox" id="xDetails" ${exportSetOpen ? 'open' : ''}><summary>내보내기 설정 <span class="hint" id="xSum">${exportSummary()}</span></summary>
         <div class="olist" id="xOpts">
           ${segRow('export', 'srep', '세트 반복', exportOpt.srep, nOpts([1, 2, 3], '회'))}
@@ -928,11 +936,13 @@ details.setbox > .sets{padding-top:10px}
         <div class="hint">앱이 빈 줄을 무시하고 바로 이어 읽으면 간격 모양을 "쉼표"나 "마침표"로 바꾸고, 간격 줄 수를 늘려 길이를 조절해 보세요.</div>
       </details>
       <div class="field"><span class="label">미리보기 <span class="num" id="xCount">· ${nWords}단어</span></span>
+        ${!nWords && exportOpt.only && exportOpt.sel.length ? '<div class="hint">고른 Day에 체크한 단어가 없어요.</div>' : ''}
         <textarea id="xText" readonly style="min-height:220px">${esc(text)}</textarea></div>
       <div class="actionbar"><button class="btn primary" id="xCopy" ${nWords ? '' : 'disabled'}>전체 복사</button><button class="btn" id="xSave" ${nWords ? '' : 'disabled'}>파일로 저장</button></div>
     </section>`;
     $('#xBack').onclick = () => { view = 'words'; render(); };
     app.querySelectorAll('[data-xs]').forEach(b => b.onclick = () => { const id = b.dataset.xs; exportOpt.sel = exportOpt.sel.includes(id) ? exportOpt.sel.filter(x => x !== id) : exportOpt.sel.concat(id); render(); });
+    bindSegs($('#xTarget'), (k, v) => { exportOpt.only = v; saveExportOpt(); render(); });
     $('#xDetails').ontoggle = e => { exportSetOpen = e.target.open; };
     bindSegs($('#xOpts'), (k, v) => { exportOpt[k] = v; saveExportOpt(); $('#xText').value = buildText(); $('#xSum').textContent = exportSummary(); });
     $('#xCopy').onclick = async () => {
@@ -942,7 +952,7 @@ details.setbox > .sets{padding-top:10px}
     };
     $('#xSave').onclick = () => {
       const names = list.filter(d => exportOpt.sel.includes(d.id)).map(d => d.name);
-      const base = (names.length === 1 ? names[0] : `단어장 ${names.length}개 Day`).replace(/[\\/:*?"<>|]/g, '_');
+      const base = ((names.length === 1 ? names[0] : `단어장 ${names.length}개 Day`) + (exportOpt.only ? ' 체크' : '')).replace(/[\\/:*?"<>|]/g, '_');
       const blob = new Blob(['\uFEFF' + $('#xText').value], { type: 'text/plain;charset=utf-8' });
       const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = base + '.txt';
       document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
