@@ -135,7 +135,9 @@ textarea{min-height:130px;font-family:var(--f-num);font-size:16px;resize:vertica
 .fb.no{background:var(--bad-soft);color:var(--bad)}
 .fb .ans{color:var(--ink)}
 .fb b{font-weight:700}
-.qfoot{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.qfoot{display:flex;align-items:center;gap:8px}
+.qfoot .hint{flex:1;min-width:0;text-align:center}
+.qback{font-size:12px;color:var(--accent);font-weight:600}
 
 /* result */
 .score{display:flex;align-items:baseline;gap:10px}
@@ -859,6 +861,9 @@ details.setbox > .sets{padding-top:10px}
     const right = it.dir === 'ko' ? it.w.w : it.w.m;
     const q = it.dir === 'ko' ? it.w.m : it.w.w;
     const hideQ = it.dir === 'listen' && !answered;
+    // 뒤로 돌아와 보는 중인지: 가장 멀리 간 문제보다 앞이면
+    quiz.maxI = Math.max(quiz.maxI || 0, quiz.i);
+    const reviewing = quiz.i < quiz.maxI;
     let body;
     if (it.options) {
       body = `<div class="opts">${it.options.map((o, k) => {
@@ -880,7 +885,7 @@ details.setbox > .sets{padding-top:10px}
       <div class="bar"><i style="width:${(quiz.i + (answered ? 1 : 0)) / total * 100}%"></i></div>
       <div class="prompt"><span class="dir">${it.dir === 'ko' ? '영어 단어는?' : it.dir === 'listen' ? '듣고 뜻을 고르세요' : '뜻은?'}</span><span class="q ${it.dir === 'ko' ? 'ko' : ''}">${hideQ ? '· · ·' : esc(q)}</span>${TTS.ok ? `<button class="spk" id="qSay" aria-label="문제 듣기" title="듣기">${SPK}</button>` : ''}</div>
       ${body}${fb}
-      <div class="qfoot"><span class="hint">${it.options ? '숫자키 1–4로 선택, ' : ''}Enter로 다음</span><button class="btn primary" id="next" ${answered ? '' : 'hidden'}>${quiz.i < total - 1 ? '다음' : '결과 보기'}</button></div>
+      <div class="qfoot"><button class="btn" id="prev" type="button" ${quiz.i > 0 ? '' : 'disabled'}>이전</button><span class="hint">${reviewing ? '<span class="qback">이미 푼 문제예요</span>' : `${it.options ? '숫자키 1–4로 선택, ' : ''}Enter로 다음`}</span><button class="btn primary" id="next" ${answered ? '' : 'hidden'}>${quiz.i < total - 1 ? '다음' : '결과 보기'}</button></div>
     </section>`;
     app.querySelectorAll('[data-o]').forEach(b => b.onclick = () => answer(it.options[+b.dataset.o]));
     if ($('#tf')) { $('#tf').onsubmit = e => { e.preventDefault(); const v = $('#ta').value.trim(); if (v) answer(v); }; if (!answered) $('#ta').focus(); }
@@ -888,13 +893,15 @@ details.setbox > .sets{padding-top:10px}
     // 화면을 다시 그리지 않고 체크만 바꾼다(입력 중인 답이 지워지지 않게)
     bindChecks(app, () => { const ta = $('#ta'); if (ta && !ta.disabled) ta.focus(); else if (answered) $('#next').focus(); });
     $('#override') && ($('#override').onclick = () => { it.correct = true; render(); });
-    $('#quit').onclick = () => { view = 'result'; quiz.items = quiz.items.slice(0, quiz.i + (answered ? 1 : 0)); render(); };
+    $('#quit').onclick = () => { view = 'result'; quiz.items = quiz.items.filter(x => x.answer !== null); render(); };
+    $('#prev').onclick = () => { if (quiz.i > 0) { quiz.i--; render(); } };
     if (answered) $('#next').focus();
     $('#next').onclick = next;
   }
   document.addEventListener('keydown', e => {
     if (view !== 'quiz' || !quiz) return;
     const it = quiz.items[quiz.i];
+    if (e.key === 'ArrowLeft' && document.activeElement?.tagName !== 'INPUT' && quiz.i > 0) { quiz.i--; render(); return; }
     if (it.options && it.answer === null && /^[1-4]$/.test(e.key) && document.activeElement?.tagName !== 'INPUT') { const o = it.options[+e.key - 1]; if (o !== undefined) answer(o); }
   });
 
@@ -919,7 +926,8 @@ details.setbox > .sets{padding-top:10px}
 
   document.addEventListener('keydown', e => {
     if (e.key !== 'Enter') return;
-    if (view === 'quiz' && quiz.items[quiz.i].answer !== null && document.activeElement?.id !== 'next') { e.preventDefault(); next(); }
+    // 버튼에 포커스가 있으면 그 버튼이 Enter를 처리하게 둔다(이전·체크 버튼 등)
+    if (view === 'quiz' && quiz.items[quiz.i].answer !== null && document.activeElement?.tagName !== 'BUTTON') { e.preventDefault(); next(); }
   });
 
   // ---------- text export (for text-reader apps) ----------
