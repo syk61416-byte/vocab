@@ -289,7 +289,10 @@ details.setbox > .sets{padding-top:10px}
   }
   const DOT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>';
   function exitSelect() { selecting = false; picked.clear(); }
-  const setup = { sel: new Set(), dir: 'en', type: 'mc', count: 'all' };
+  const setup = { sel: new Set(), dir: 'en', type: 'mc', count: 'all', nopt: '4', from: 'all' };
+  // 테스트 설정(범위 제외)은 다음에도 유지
+  try { const o = JSON.parse(localStorage.getItem('vocab-setup') || '{}'); ['dir', 'type', 'count', 'nopt', 'from'].forEach(k => { if (typeof o[k] === 'string') setup[k] = o[k]; }); } catch (e) {}
+  const saveSetup = () => { try { const { sel, ...rest } = setup; localStorage.setItem('vocab-setup', JSON.stringify(rest)); } catch (e) {} };
   let quiz = null;
 
   const $ = s => document.querySelector(s);
@@ -784,7 +787,7 @@ details.setbox > .sets{padding-top:10px}
 
   // ---------- render: test setup ----------
   setup.target = 'all';
-  function poolFor(sel, target = setup.target) { const out = []; for (const d of sorted()) if (sel.has(d.id)) for (const w of d.words) if (target !== 'checked' || w.checked) out.push({ ...w, day: d.name }); return out; }
+  function poolFor(sel, target = setup.target) { const out = []; for (const d of sorted()) if (sel.has(d.id)) for (const w of d.words) if (target !== 'checked' || w.checked) out.push({ ...w, day: d.name, dayId: d.id }); return out; }
   function renderSetup() {
     const list = sorted().filter(d => d.words.length);
     for (const id of [...setup.sel]) if (!list.find(d => d.id === id)) setup.sel.delete(id);
@@ -806,9 +809,12 @@ details.setbox > .sets{padding-top:10px}
       <div class="olist" id="setupOpts">
         ${segRow('setup', 'target', '대상', setup.target, [['all', '전체 단어'], ['checked', `체크한 단어 (${checkedTotal})`]])}
         ${segRow('setup', 'dir', '문제', setup.dir, [['en', '단어→뜻'], ['ko', '뜻→단어'], ['mix', '섞기']].concat(TTS.ok ? [['listen', '듣기']] : []))}
-        ${segRow('setup', 'type', '답하기', setup.type, [['mc', '4지선다', !mcOk], ['type', '직접 입력']])}
+        ${segRow('setup', 'type', '답하기', setup.type, [['mc', '객관식', !mcOk], ['type', '직접 입력']])}
+        ${setup.type === 'mc' ? segRow('setup', 'nopt', '보기 수', setup.nopt, [['4', '4개'], ['3', '3개'], ['2', '2개']]) : ''}
+        ${setup.type === 'mc' ? segRow('setup', 'from', '보기 출처', setup.from, [['all', '모든 목록'], ['day', '같은 목록만']]) : ''}
         ${segRow('setup', 'count', '문항 수', setup.count, [['all', '전체'], ['10', '10'], ['20', '20'], ['30', '30']])}
       </div>
+      ${setup.type === 'mc' && setup.from === 'day' ? '<div class="hint">오답 보기를 문제 단어와 같은 목록에서만 뽑아요. 그 목록에 서로 다른 뜻이 2가지뿐이면 보기도 2개만 나와요.</div>' : ''}
       <div class="hint" id="dirHint">${({ en: '영어 단어를 보고 뜻을 고릅니다.', ko: '뜻을 보고 영어 단어를 고릅니다.', mix: '두 방향이 무작위로 섞여 나옵니다.', listen: '단어를 숨기고, 스피커 버튼을 눌러 소리로 듣고 뜻을 고릅니다.' })[setup.dir]}</div>
       <div class="setupfoot"><span class="sub">${pool.length ? `${n}문제 · 순서는 매번 랜덤` : emptyMsg}</span>
         <button class="btn primary" id="start" ${pool.length ? '' : 'disabled'}>시작</button></div>
@@ -816,7 +822,7 @@ details.setbox > .sets{padding-top:10px}
     app.querySelectorAll('[data-sel]').forEach(b => b.onclick = () => { const id = b.dataset.sel; setup.sel.has(id) ? setup.sel.delete(id) : setup.sel.add(id); render(); });
     $('#selAll').onclick = () => { if (setup.sel.size === list.length) setup.sel.clear(); else list.forEach(d => setup.sel.add(d.id)); render(); };
     bindSegs($('#setupOpts'), (k, v) => {
-      setup[k] = String(v); render();
+      setup[k] = String(v); saveSetup(); render();
     });
     $('#start').onclick = () => startQuiz(poolFor(setup.sel));
   }
@@ -826,6 +832,8 @@ details.setbox > .sets{padding-top:10px}
     let items = shuffle(pool);
     if (!limitAll && setup.count !== 'all') items = items.slice(0, +setup.count);
     const all = days.flatMap(d => d.words);
+    const byDay = new Map(days.map(d => [d.id, d.words]));
+    const nDistract = Math.max(1, (+setup.nopt || 4) - 1);
     quiz = {
       items: items.map(w => {
         const dir = setup.dir === 'mix' ? (Math.random() < .5 ? 'en' : 'ko') : setup.dir;
@@ -834,7 +842,8 @@ details.setbox > .sets{padding-top:10px}
           const key = dir === 'ko' ? 'w' : 'm';
           const seen = new Set([norm(w[key])]);
           const distract = [];
-          for (const x of shuffle(all)) { const k = norm(x[key]); if (!seen.has(k)) { seen.add(k); distract.push(x[key]); } if (distract.length === 3) break; }
+          const src = setup.from === 'day' && byDay.has(w.dayId) ? byDay.get(w.dayId) : all;
+          for (const x of shuffle(src)) { const k = norm(x[key]); if (!seen.has(k)) { seen.add(k); distract.push(x[key]); } if (distract.length >= nDistract) break; }
           options = shuffle([w[key], ...distract]);
         }
         return { w, dir, options, answer: null, correct: null };
@@ -889,7 +898,7 @@ details.setbox > .sets{padding-top:10px}
       <div class="bar"><i style="width:${(quiz.i + (answered ? 1 : 0)) / total * 100}%"></i></div>
       <div class="prompt"><span class="dir">${it.dir === 'ko' ? '영어 단어는?' : it.dir === 'listen' ? '듣고 뜻을 고르세요' : '뜻은?'}</span><span class="q ${it.dir === 'ko' ? 'ko' : ''}">${hideQ ? '· · ·' : esc(q)}</span>${TTS.ok ? `<button class="spk" id="qSay" aria-label="문제 듣기" title="듣기">${SPK}</button>` : ''}</div>
       ${body}${fb}
-      <div class="qfoot"><button class="btn" id="prev" type="button" ${quiz.i > 0 ? '' : 'disabled'}>이전</button><span class="hint">${reviewing ? '<span class="qback">이미 푼 문제예요</span>' : `${it.options ? '숫자키 1–4로 선택, ' : ''}Enter로 다음`}</span><button class="btn primary" id="next" ${answered ? '' : 'hidden'}>${quiz.i < total - 1 ? '다음' : '결과 보기'}</button></div>
+      <div class="qfoot"><button class="btn" id="prev" type="button" ${quiz.i > 0 ? '' : 'disabled'}>이전</button><span class="hint">${reviewing ? '<span class="qback">이미 푼 문제예요</span>' : `${it.options ? `숫자키 1–${it.options.length}로 선택, ` : ''}Enter로 다음`}</span><button class="btn primary" id="next" ${answered ? '' : 'hidden'}>${quiz.i < total - 1 ? '다음' : '결과 보기'}</button></div>
     </section>`;
     app.querySelectorAll('[data-o]').forEach(b => b.onclick = () => answer(it.options[+b.dataset.o]));
     if ($('#tf')) { $('#tf').onsubmit = e => { e.preventDefault(); const v = $('#ta').value.trim(); if (v) answer(v); }; if (!answered) $('#ta').focus(); }
