@@ -67,7 +67,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 .dayname:hover{border-color:var(--line)}
 .dayhead .spacer{flex:1}
 .addform{display:grid;grid-template-columns:1fr 1.4fr auto;gap:8px}
-input[type=text],textarea{width:100%;min-width:0;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:16px var(--f-ui);padding:9px 11px;border-radius:8px}
+input[type=text],input[type=search],textarea{width:100%;min-width:0;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:16px var(--f-ui);padding:9px 11px;border-radius:8px}
 textarea{min-height:130px;font-family:var(--f-num);font-size:16px;resize:vertical}
 .bulk{display:flex;flex-direction:column;gap:8px}
 .hint{font-size:13px;color:var(--muted)}
@@ -152,6 +152,19 @@ textarea{min-height:130px;font-family:var(--f-num);font-size:16px;resize:vertica
 .backup{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:14px}
 .vh{position:absolute;width:1px;height:1px;opacity:0;overflow:hidden;pointer-events:none}
 .wrap,.backup{min-width:0}
+.qsearch{position:relative;min-width:0}
+.qsearch form{display:flex;gap:8px}
+.qsearch input[type=search]{flex:1;-webkit-appearance:none;appearance:none}
+.qsdrop{position:absolute;left:0;right:0;top:calc(100% + 6px);z-index:30;background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 30px color-mix(in srgb, #000 28%, transparent);max-height:min(55vh,440px);overflow:auto;-webkit-overflow-scrolling:touch}
+.qshead{position:sticky;top:0;z-index:1;display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 8px 8px 12px;background:var(--surface);border-bottom:1px solid var(--line);font-size:12px;color:var(--muted)}
+.qsi{display:grid;grid-template-columns:2.1em minmax(0,1fr) auto;gap:2px 10px;align-items:center;padding:9px 12px 9px 6px;border-bottom:1px solid var(--line)}
+.qsi:last-child{border-bottom:0}
+.qsi > .chk{grid-row:1 / span 2}
+.qsi .w{font:600 17px var(--f-word);overflow-wrap:anywhere}
+.qsi .m{grid-column:2;overflow-wrap:anywhere;font-size:14px}
+.qsi .tag{grid-column:3;grid-row:1 / span 2;font-size:12px;color:var(--muted);white-space:nowrap}
+.qsi mark{background:var(--accent-soft);color:var(--accent);font-weight:700;border-radius:3px;padding:0 1px}
+.qsempty{padding:18px 12px;text-align:center;color:var(--muted);font-size:14px}
 .toast{z-index:60;position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom, 0px));background:var(--ink);color:var(--bg);padding:9px 16px;border-radius:8px;font-size:14px;max-width:calc(100% - 32px)}
 
 /* settings as visible segmented rows: every choice on screen, current one filled */
@@ -252,6 +265,13 @@ details.setbox > .sets{padding-top:10px}
       <button role="tab" id="tab-test" aria-selected="false">테스트</button>
     </div>
   </header>
+  <div class="qsearch" id="qsearch" hidden>
+    <form id="qsForm" role="search" autocomplete="off">
+      <input type="search" id="qsInput" placeholder="전체 단어에서 찾기 (영어·뜻)" aria-label="전체 단어 검색" enterkeyhint="search" autocapitalize="off" spellcheck="false">
+      <button class="btn sm" type="submit">검색</button>
+    </form>
+    <div class="qsdrop" id="qsDrop" hidden></div>
+  </div>
   <main id="app"></main>
   <footer class="backup">
     <span class="hint">단어는 이 브라우저에만 저장돼요. 브라우저 데이터를 지우면 사라지니 가끔 백업 파일을 받아 두세요.</span>
@@ -913,6 +933,7 @@ details.setbox > .sets{padding-top:10px}
   }
   document.addEventListener('keydown', e => {
     if (view !== 'quiz' || !quiz) return;
+    if (e.target && e.target.id === 'qsInput') return;
     const it = quiz.items[quiz.i];
     if (e.key === 'ArrowLeft' && document.activeElement?.tagName !== 'INPUT' && quiz.i > 0) { quiz.i--; render(); return; }
     if (it.options && it.answer === null && /^[1-4]$/.test(e.key) && document.activeElement?.tagName !== 'INPUT') { const o = it.options[+e.key - 1]; if (o !== undefined) answer(o); }
@@ -939,6 +960,7 @@ details.setbox > .sets{padding-top:10px}
 
   document.addEventListener('keydown', e => {
     if (e.key !== 'Enter') return;
+    if (e.target && e.target.id === 'qsInput') return;
     // 버튼에 포커스가 있으면 그 버튼이 Enter를 처리하게 둔다(이전·체크 버튼 등)
     if (view === 'quiz' && quiz.items[quiz.i].answer !== null && document.activeElement?.tagName !== 'BUTTON') { e.preventDefault(); next(); }
   });
@@ -1023,6 +1045,33 @@ details.setbox > .sets{padding-top:10px}
     };
   }
 
+  // ---------- quiz search: 모든 목록에서 영어·뜻 부분 일치(LIKE '%q%') ----------
+  function hl(text, q) {
+    const t = String(text), i = t.toLowerCase().indexOf(q);
+    return i < 0 ? esc(t) : esc(t.slice(0, i)) + '<mark>' + esc(t.slice(i, i + q.length)) + '</mark>' + esc(t.slice(i + q.length));
+  }
+  function runSearch() {
+    const drop = $('#qsDrop'), q = clean($('#qsInput').value).toLowerCase();
+    if (!q) { drop.hidden = true; return; }
+    const res = [];
+    for (const d of sorted()) for (const w of d.words) if (w.w.toLowerCase().includes(q) || w.m.toLowerCase().includes(q)) res.push({ w, d });
+    const LIMIT = 100;
+    drop.innerHTML = `<div class="qshead"><span>${res.length ? `${res.length}개 찾음${res.length > LIMIT ? ` · 앞의 ${LIMIT}개만 표시` : ''}` : '결과 없음'}</span><button class="ghost" type="button" id="qsClose">닫기</button></div>`
+      + (res.length ? res.slice(0, LIMIT).map(({ w, d }) => `<div class="qsi">${chkBtn(w.id, w.w)}<span class="w">${hl(w.w, q)}</span><span class="m">${hl(w.m, q)}</span><span class="tag">${esc(d.name)}</span></div>`).join('')
+        : `<div class="qsempty">"${esc(q)}"이(가) 들어간 단어나 뜻이 없어요</div>`);
+    drop.hidden = false; drop.scrollTop = 0;
+    $('#qsClose').onclick = () => { drop.hidden = true; };
+    bindChecks(drop);
+  }
+  let qsTimer = null;
+  $('#qsInput').addEventListener('input', () => { clearTimeout(qsTimer); qsTimer = setTimeout(runSearch, 150); });
+  $('#qsInput').addEventListener('focus', () => { if ($('#qsInput').value.trim()) runSearch(); });
+  $('#qsInput').addEventListener('keydown', e => { if (e.key === 'Escape') { $('#qsDrop').hidden = true; } });
+  // 검색 버튼(또는 키보드의 검색 키): 결과를 보여주고 키보드를 내려 목록이 가려지지 않게
+  $('#qsForm').addEventListener('submit', e => { e.preventDefault(); clearTimeout(qsTimer); runSearch(); $('#qsInput').blur(); });
+  // 검색창 바깥을 누르면 목록 닫기
+  document.addEventListener('pointerdown', e => { if (!$('#qsearch').contains(e.target)) $('#qsDrop').hidden = true; });
+
   // ---------- tabs ----------
   function switchTab(t) {
     stopPlayer(); cancelSpeech(); exitSelect();
@@ -1048,6 +1097,8 @@ details.setbox > .sets{padding-top:10px}
     else if (view === 'export') renderExport();
     else if (view === 'quiz') renderQuiz();
     else renderResult();
+    $('#qsearch').hidden = view !== 'quiz';
+    if (view !== 'quiz') $('#qsDrop').hidden = true;
     // 같은 화면을 다시 그린 경우(수정·삭제·저장 등)엔 보던 위치로 되돌린다
     const key = view + '|' + curDay;
     if (key === lastKey) window.scrollTo(0, y);
