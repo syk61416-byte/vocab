@@ -102,6 +102,9 @@ textarea{min-height:130px;font-family:var(--f-num);font-size:16px;resize:vertica
 .mini{display:inline-flex;align-items:center;gap:4px;font-size:13px;color:var(--muted)}
 .mini .seg button{padding:4px 9px;font-size:13px}
 .listen-in{display:flex;flex-direction:column;gap:10px}
+.chunkbar{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:8px 10px;border-radius:8px;background:var(--accent-soft)}
+.chunkbar .num{font-size:13px;font-weight:600;color:var(--accent)}
+.chunkbar .cbtns{display:flex;gap:6px;flex-wrap:wrap}
 .mini select{max-width:min(260px,62vw);font:13px var(--f-ui);color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:4px 6px}
 .row.editing{grid-template-columns:2.2em minmax(0,1fr) minmax(0,1.4fr) auto}
 .empty{text-align:center;padding:28px 12px;color:var(--muted);display:flex;flex-direction:column;gap:12px;align-items:center}
@@ -481,7 +484,7 @@ details.setbox > .sets{padding-top:10px}
   // ---------- speech (Web Speech API) ----------
   const TTS = { ok: typeof window.speechSynthesis !== 'undefined' && typeof window.SpeechSynthesisUtterance !== 'undefined', voices: [] };
   const SPK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>';
-  const ttsOpt = { srep: 1, meaning: true, rate: 0.9, order: 'seq', follow: false, loop: false, tilde: 'say' };
+  const ttsOpt = { srep: 1, meaning: true, rate: 0.9, order: 'seq', follow: false, loop: false, tilde: 'say', chunk: 0, crep: 3 };
   try { Object.assign(ttsOpt, JSON.parse(localStorage.getItem('vocab-tts') || '{}')); } catch (e) {}
   // 예전 설정(단어 반복/뜻 반복 따로)을 세트 반복으로 옮긴다
   if ('mrep' in ttsOpt || 'rep' in ttsOpt) { if (typeof ttsOpt.mrep === 'number') ttsOpt.meaning = ttsOpt.mrep > 0; delete ttsOpt.mrep; delete ttsOpt.rep; delete ttsOpt.auto; }
@@ -507,7 +510,7 @@ details.setbox > .sets{padding-top:10px}
     return exact.find(x => x.default) || exact[0] || list[0] || null;
   }
   let ttsSetOpen = false;
-  const ttsSummary = () => `${ttsOpt.meaning ? '단어+뜻' : '단어만'} ${ttsOpt.srep}회 · ${({ 0.7: '느리게', 0.9: '보통', 1.1: '빠르게' })[ttsOpt.rate] || '보통'} · ${ttsOpt.order === 'rand' ? '랜덤' : '순서대로'}${ttsOpt.follow ? ' · 따라가기' : ''}${ttsOpt.loop ? ' · 계속 반복' : ''}`;
+  const ttsSummary = () => `${ttsOpt.meaning ? '단어+뜻' : '단어만'} ${ttsOpt.srep}회 · ${({ 0.7: '느리게', 0.9: '보통', 1.1: '빠르게' })[ttsOpt.rate] || '보통'} · ${ttsOpt.order === 'rand' ? '랜덤' : '순서대로'}${ttsOpt.follow ? ' · 따라가기' : ''}${ttsOpt.chunk ? ` · 구간 ${ttsOpt.chunk}개×${ttsOpt.crep ? ttsOpt.crep + '회' : '계속'}` : ''}${ttsOpt.loop ? ' · 계속 반복' : ''}`;
   // 설정 상자는 재생 중에도 다시 그리지 않는다(선택창이 닫히지 않도록)
   function paintVoices() {
     const box = $('#ttsSet'); if (!box || !TTS.ok) return;
@@ -525,6 +528,8 @@ details.setbox > .sets{padding-top:10px}
         ${segRow('tts', 'rate', '속도', ttsOpt.rate, [[0.7, '느리게'], [0.9, '보통'], [1.1, '빠르게']])}
         ${segRow('tts', 'order', '순서', ttsOpt.order, [['seq', '입력 순서'], ['rand', '랜덤']])}
         ${segRow('tts', 'tilde', '물결(~)', ttsOpt.tilde, [['say', "'뭐뭐'로 읽기"], ['skip', '건너뛰기']])}
+        ${segRow('tts', 'chunk', '구간 단위', ttsOpt.chunk, [[0, '끄기'], [5, '5개'], [10, '10개'], [20, '20개']])}
+        ${ttsOpt.chunk ? segRow('tts', 'crep', '구간 반복', ttsOpt.crep, [[2, '2회'], [3, '3회'], [5, '5회'], [0, '넘길 때까지']]) : ''}
         ${segRow('tts', 'loop', '끝나면', ttsOpt.loop, [[false, '멈추기'], [true, '처음부터 계속']])}
         ${segRow('tts', 'follow', '화면 따라가기', ttsOpt.follow, [[false, '끄기'], [true, '켜기']])}
         ${vRow('en-US', '영어 목소리')}
@@ -536,7 +541,9 @@ details.setbox > .sets{padding-top:10px}
       sayNow(L === 'en' ? 'Hello, this is your vocabulary voice.' : '안녕하세요, 뜻을 읽어 드릴게요.');
     });
     bindSegs(box, (k, v) => {
-      ttsOpt[k] = v; saveTts(); $('#ttsSum').textContent = ttsSummary();
+      ttsOpt[k] = v; saveTts();
+      if (k === 'chunk') paintVoices();   // 구간 반복 줄을 보이거나 숨김
+      $('#ttsSum').textContent = ttsSummary();
       const day = days.find(d => d.id === curDay);
       if (player && day && player.dayId === day.id && k !== 'rate') { const cid = player.steps[player.cur]?.id; const was = player.playing; playDay(day, ttsOpt.order === 'seq' ? cid : null, player.only); if (!was) pausePlayer(); }
     });
@@ -581,15 +588,27 @@ details.setbox > .sets{padding-top:10px}
   let player = null, ptok = 0;
   function buildSteps(day, startId, only) {
     let ws = only ? day.words.filter(w => w.checked) : day.words.slice();
+    const N = +ttsOpt.chunk || 0;
     if (ttsOpt.order === 'rand') ws = shuffle(ws);
-    else if (startId) { const k = ws.findIndex(w => w.id === startId); if (k > 0) ws = ws.slice(k); }
+    // 구간 모드가 아닐 때만 '지금 단어부터' 자른다(구간 모드는 구간 경계가 바뀌지 않게 playDay에서 위치만 옮김)
+    else if (startId && !N) { const k = ws.findIndex(w => w.id === startId); if (k > 0) ws = ws.slice(k); }
     const steps = [];
-    for (const w of ws) {
+    const pushWord = (w, meta) => {
       // 단어→뜻 한 세트를 srep번 반복. 세트 안은 짧게, 반복 사이는 조금 길게, 다음 단어 전엔 더 길게 쉰다
       for (let r = 0; r < ttsOpt.srep; r++) {
-        steps.push({ id: w.id, text: w.w, gap: 450 });
-        if (ttsOpt.meaning) steps.push({ id: w.id, text: w.m, gap: 450 });
+        steps.push({ id: w.id, text: w.w, gap: 450, ...meta });
+        if (ttsOpt.meaning) steps.push({ id: w.id, text: w.m, gap: 450, ...meta });
         steps[steps.length - 1].gap = r < ttsOpt.srep - 1 ? 750 : 1100;
+      }
+    };
+    if (!N) { ws.forEach(w => pushWord(w, {})); return steps; }
+    // 구간 반복: N개씩 끊어서 각 구간을 R번 반복한 뒤 다음 구간으로. '넘길 때까지'(crep=0)는 1번만 만들고 stepPlayer에서 되감는다
+    const R = ttsOpt.crep ? +ttsOpt.crep : 1;
+    for (let ci = 0; ci * N < ws.length; ci++) {
+      const part = ws.slice(ci * N, (ci + 1) * N);
+      for (let rr = 0; rr < R; rr++) {
+        part.forEach(w => pushWord(w, { chunk: ci, crep: rr }));
+        const last = steps[steps.length - 1]; last.gap = 1800; last.endOfRep = true;
       }
     }
     return steps;
@@ -618,7 +637,9 @@ details.setbox > .sets{padding-top:10px}
     const steps = buildSteps(day, startId, only);
     if (!steps.length) { toast('이 Day에 체크한 단어가 없어요'); return; }
     stopPlayer(); cancelSpeech();
-    const p = player = { dayId: day.id, only, steps, cur: 0, playing: true, timer: null };
+    let cur = 0;
+    if (startId && steps[0].chunk !== undefined) { const i = steps.findIndex(x => x.id === startId); if (i > 0) cur = steps.findIndex(x => x.chunk === steps[i].chunk); }
+    const p = player = { dayId: day.id, only, steps, cur, playing: true, timer: null };
     keepAwake(true);
     paintPlayer();
     p.timer = setTimeout(() => { if (player === p && p.playing) stepPlayer(); }, 150);
@@ -633,11 +654,30 @@ details.setbox > .sets{padding-top:10px}
       player.steps = again; player.cur = 0; player.round = (player.round || 1) + 1; player.followId = null;
     }
     const st = player.steps[player.cur], t = ++ptok;
+    if (st.chunk !== player.lastChunk) { player.lastChunk = st.chunk; player.chunkRound = 1; }
     markSpeaking(st.id); paintPlayer();
     say(st.text, () => {
       if (t !== ptok || !player || !player.playing) return;
-      player.timer = setTimeout(() => { if (t !== ptok || !player) return; player.cur++; stepPlayer(); }, st.gap);
+      player.timer = setTimeout(() => {
+        if (t !== ptok || !player) return;
+        if (st.endOfRep && ttsOpt.chunk && !ttsOpt.crep) {   // 넘길 때까지: 같은 구간 처음으로
+          player.cur = player.steps.findIndex(x => x.chunk === st.chunk); player.chunkRound++; player.followId = null;
+        } else player.cur++;
+        stepPlayer();
+      }, st.gap);
     });
+  }
+  function jumpChunk(d) {
+    if (!player) return;
+    const curSt = player.steps[Math.min(player.cur, player.steps.length - 1)];
+    if (!curSt || curSt.chunk === undefined) return;
+    const i = player.steps.findIndex(x => x.chunk === curSt.chunk + d);
+    if (i < 0) return;
+    ptok++; clearTimeout(player.timer); cancelSpeech();
+    player.cur = i; player.followId = null; player.lastChunk = undefined;
+    const p = player;
+    if (p.playing) p.timer = setTimeout(() => { if (player === p && p.playing) stepPlayer(); }, 150);
+    else { markSpeaking(p.steps[i].id); paintPlayer(); }
   }
   function pausePlayer() { if (!player) return; player.playing = false; ptok++; clearTimeout(player.timer); cancelSpeech(); keepAwake(false); paintPlayer(); }
   function resumePlayer() { if (!player) return; const p = player; p.playing = true; keepAwake(true); paintPlayer(); p.timer = setTimeout(() => { if (player === p && p.playing) stepPlayer(); }, 150); }
@@ -675,12 +715,21 @@ details.setbox > .sets{padding-top:10px}
         ${mine ? `<button class="btn sm" id="pStop">정지</button>` : ''}
         <span class="now">${w ? `<span class="num">${player.only ? '체크 ' : ''}${pos}${player.round > 1 ? ` · ${player.round}바퀴` : ''}</span> · <b>${esc(w.w)}</b> ${esc(w.m)}` : nChk ? '' : '단어를 체크하면 체크한 것만 들을 수 있어요'}</span>
         ${mine && wakeLock ? '<span class="hint" title="재생하는 동안 화면이 꺼지지 않아요">화면 켜짐 유지</span>' : ''}
-      </div>`;
+      </div>
+      ${mine && st && st.chunk !== undefined ? (() => {
+        const nC = player.steps[player.steps.length - 1].chunk + 1;
+        const repTxt = ttsOpt.crep ? `${st.crep + 1} / ${ttsOpt.crep}회` : `${player.chunkRound || 1}회째 반복 중`;
+        return `<div class="chunkbar"><span class="num">구간 ${st.chunk + 1} / ${nC} · ${repTxt}</span>
+          <span class="cbtns"><button class="btn sm" id="cPrev" ${st.chunk ? '' : 'disabled'}>이전 구간</button><button class="btn sm" id="cAgain">구간 처음</button><button class="btn sm" id="cNext" ${st.chunk < nC - 1 ? '' : 'disabled'}>다음 구간</button></span></div>`;
+      })() : ''}`;
     $('#pPlay') && ($('#pPlay').onclick = () => playDay(day));
     $('#pPlayChk') && ($('#pPlayChk').onclick = () => playDay(day, null, true));
     $('#pPause') && ($('#pPause').onclick = pausePlayer);
     $('#pResume') && ($('#pResume').onclick = resumePlayer);
     $('#pStop') && ($('#pStop').onclick = stopPlayer);
+    $('#cPrev') && ($('#cPrev').onclick = () => jumpChunk(-1));
+    $('#cAgain') && ($('#cAgain').onclick = () => jumpChunk(0));
+    $('#cNext') && ($('#cNext').onclick = () => jumpChunk(1));
   }
 
   // ---------- render: word book ----------
