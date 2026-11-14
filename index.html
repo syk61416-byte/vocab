@@ -6,7 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,500;6..72,600&family=IBM+Plex+Mono:wght@500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
 <style>
 /* Layout: single column workbench — day index on top, active day's word list below; quiz replaces it with one card at a time */
 :root{
@@ -14,9 +14,10 @@
   --accent:#1F5F73; --accent-ink:#FFFFFF; --accent-soft:#DCEAEE;
   --ok:#2C7A4B; --ok-soft:#DFF1E5; --bad:#B03A2E; --bad-soft:#F8E1DE;
   --star:#B7791F; --star-soft:#FBEFD6;
-  --f-word:"Newsreader", Georgia, "Times New Roman", serif;
+  /* 서체는 하나(IBM Plex Sans KR)로 통일하고 크기·굵기로만 구분 */
   --f-ui:"IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
-  --f-num:"IBM Plex Mono", ui-monospace, Menlo, monospace;
+  --f-word:var(--f-ui);
+  --f-num:var(--f-ui);
   --r:10px;
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
