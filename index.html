@@ -820,7 +820,7 @@ details.setbox > .sets{padding-top:10px}
           </div>`}
         </div>
         <label class="daynote ${day.note ? '' : 'empty'}" for="daynote"><span class="label">주제</span>
-          <textarea id="daynote" rows="1" placeholder="이 목록의 주제·암기법을 적어 두세요 (예: 5형식 O.C 자리에 to V만 / portcafewug)">${esc(day.note || '')}</textarea></label>
+          <textarea id="daynote" rows="1" placeholder="이 목록의 주제나 암기법을 적어 두세요">${esc(day.note || '')}</textarea></label>
         ${selecting ? '<div class="selhint">삭제할 단어를 눌러 선택하세요.</div>' : ''}
         ${ordering ? '<div class="selhint">왼쪽 ≡를 누른 채 위아래로 끌거나, ▲▼로 한 칸씩 옮기세요. 바로 저장돼요.</div>' : ''}
         ${TTS.ok && !selecting && !ordering ? '<div class="listen"><div id="playerBox" class="listen-in"></div><div id="ttsSet"></div></div>' : ''}
