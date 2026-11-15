@@ -65,6 +65,13 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 
 .panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:18px;display:flex;flex-direction:column;gap:16px}
 .dayhead{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.daynote{display:flex;flex-direction:column;gap:4px;background:var(--accent-soft);border-radius:10px;padding:10px 12px;cursor:text}
+.daynote .label{color:var(--accent)}
+.daynote textarea{min-height:0;resize:none;overflow:hidden;border:0;background:transparent;padding:0;font:600 16px/1.5 var(--f-ui);color:var(--ink);white-space:pre-wrap}
+.daynote textarea::placeholder{font-weight:400;color:var(--muted)}
+.daynote.empty{background:transparent;border:1px dashed var(--line)}
+.daynote.empty .label{color:var(--muted)}
+.qnote{background:var(--accent-soft);color:var(--ink);border-radius:8px;padding:8px 12px;font-size:14px;font-weight:600;white-space:pre-wrap;overflow-wrap:anywhere}
 .dayname{font:700 20px var(--f-ui);border:1px solid transparent;background:none;color:var(--ink);padding:2px 6px;margin-left:-6px;border-radius:6px;width:12ch;min-width:0;flex:1 1 140px}
 .dayname:hover{border-color:var(--line)}
 .dayhead .spacer{flex:1}
@@ -377,10 +384,13 @@ details.setbox > .sets{padding-top:10px}
   // NUL 같은 제어문자·폭 없는 공백·BOM은 지우고, 줄바꿈 없는 공백/전각 공백/탭은 일반 공백으로, 연속 공백은 하나로
   const JUNK = /[\u0000-\u0008\u000A-\u001F\u007F-\u009F­​-‏‪-‮⁠-⁤﻿]/g;
   const clean = t => String(t ?? '').replace(/[\t  -   　]/g, ' ').replace(JUNK, '').replace(/ {2,}/g, ' ').trim();
+  // 여러 줄 메모용: 줄은 살리고 각 줄만 정리
+  const cleanNote = t => String(t ?? '').split(/\r?\n/).map(clean).join('\n').replace(/\n{3,}/g, '\n\n').trim();
   function cleanAll() {
     let n = 0;
     for (const d of days) {
       const nm = clean(d.name); if (nm && nm !== d.name) { d.name = nm; n++; }
+      if (d.note) { const nt = cleanNote(d.note); if (nt !== d.note) { d.note = nt; n++; } }
       for (const w of d.words || []) { const a = clean(w.w), b = clean(w.m); if (a !== w.w || b !== w.m) { w.w = a || w.w; w.m = b || w.m; n++; } }
     }
     return n;
@@ -427,7 +437,7 @@ details.setbox > .sets{padding-top:10px}
     const arr = Array.isArray(p) ? p : p && p.days;
     if (!Array.isArray(arr)) return null;
     return arr.filter(d => d && Array.isArray(d.words)).map((d, i) => ({
-      id: String(d.id || uid('d')), name: clean(d.name) || `Day ${i + 1}`, order: Number(d.order) || i + 1,
+      id: String(d.id || uid('d')), name: clean(d.name) || `Day ${i + 1}`, order: Number(d.order) || i + 1, note: cleanNote(d.note),
       words: d.words.filter(w => w && clean(w.w) && clean(w.m)).map(w => ({ id: String(w.id || uid('w')), w: clean(w.w), m: clean(w.m), checked: !!w.checked, focus: !!w.focus }))
     }));
   }
@@ -448,6 +458,7 @@ details.setbox > .sets{padding-top:10px}
       for (const d of importing) {
         const t = byName.get(d.name);
         if (t) {
+          if (d.note) t.note = d.note;   // 주제 메모는 파일 쪽을 따른다(비어 있으면 유지)
           const key = w => w.w.toLowerCase() + '\u0000' + w.m;
           const have = new Map(t.words.map(w => [key(w), w]));
           // 이미 있는 단어는 파일의 체크 상태를 따르고, 없는 단어는 추가
@@ -808,6 +819,8 @@ details.setbox > .sets{padding-top:10px}
           <button class="btn sm danger" id="delDay">Day 삭제</button>
           </div>`}
         </div>
+        <label class="daynote ${day.note ? '' : 'empty'}" for="daynote"><span class="label">주제</span>
+          <textarea id="daynote" rows="1" placeholder="이 목록의 주제·암기법을 적어 두세요 (예: 5형식 O.C 자리에 to V만 / portcafewug)">${esc(day.note || '')}</textarea></label>
         ${selecting ? '<div class="selhint">삭제할 단어를 눌러 선택하세요.</div>' : ''}
         ${ordering ? '<div class="selhint">왼쪽 ≡를 누른 채 위아래로 끌거나, ▲▼로 한 칸씩 옮기세요. 바로 저장돼요.</div>' : ''}
         ${TTS.ok && !selecting && !ordering ? '<div class="listen"><div id="playerBox" class="listen-in"></div><div id="ttsSet"></div></div>' : ''}
@@ -835,6 +848,14 @@ details.setbox > .sets{padding-top:10px}
     app.querySelectorAll('[data-day]').forEach(b => b.onclick = () => { if (curDay !== b.dataset.day) stopPlayer(); curDay = b.dataset.day; editingWord = null; exitSelect(); render(); });
     $('#addDay').onclick = () => { addDay(); editingWord = null; render(); $('#nw')?.focus(); };
     const dn = $('#dayname');
+    // 주제 메모: 입력하는 대로 높이를 맞추고, 손을 떼면 저장
+    const dnote = $('#daynote');
+    const fitNote = () => { dnote.style.height = 'auto'; dnote.style.height = dnote.scrollHeight + 'px'; };
+    fitNote(); requestAnimationFrame(fitNote);
+    let noteTimer = null;
+    const saveNote = () => { const v = cleanNote(dnote.value); if (v !== (day.note || '')) { day.note = v; saveDay(day); } dnote.closest('.daynote').classList.toggle('empty', !v); };
+    dnote.addEventListener('input', () => { fitNote(); clearTimeout(noteTimer); noteTimer = setTimeout(saveNote, 600); });
+    dnote.addEventListener('blur', () => { clearTimeout(noteTimer); saveNote(); });
     dn.onchange = () => { const v = clean(dn.value); if (v && v !== day.name) { day.name = v; saveDay(day); render(); } else dn.value = day.name; };
     dn.onkeydown = e => { if (e.key === 'Enter') dn.blur(); };
     $('#delDay') && ($('#delDay').onclick = async () => {
@@ -1041,6 +1062,7 @@ details.setbox > .sets{padding-top:10px}
         : `<div class="fb no"><span><b>오답</b> <span class="ans">정답: ${esc(right)}</span></span>${setup.type === 'type' ? '<button class="btn sm" id="override">맞은 걸로 처리</button>' : ''}</div>`;
     }
     app.innerHTML = `<section class="panel">
+      ${(() => { const nt = days.find(d => d.id === it.w.dayId)?.note; return nt ? `<div class="qnote">${esc(nt)}</div>` : ''; })()}
       <div class="qtop"><span class="num">${quiz.i + 1} / ${total}</span><span class="sub">${esc(it.w.day)}</span><span class="grow"></span><button type="button" class="qchk" data-chk="${it.w.id}" aria-pressed="${isChecked(it.w.id)}" title="이 단어 체크(숙지)"><span class="box">${CHK}</span>체크</button><button type="button" class="qchk qstar" data-star="${it.w.id}" aria-pressed="${isFocus(it.w.id)}" title="이 단어 집중"><span class="box">${STAR}</span>집중</button><button class="ghost" id="quit">그만하기</button></div>
       <div class="bar"><i style="width:${(quiz.i + (answered ? 1 : 0)) / total * 100}%"></i></div>
       <div class="prompt"><span class="dir">${it.dir === 'ko' ? '영어 단어는?' : it.dir === 'listen' ? '듣고 뜻을 고르세요' : '뜻은?'}</span><span class="q ${it.dir === 'ko' ? 'ko' : ''}">${hideQ ? '· · ·' : esc(q)}</span>${TTS.ok ? `<button class="spk" id="qSay" aria-label="문제 듣기" title="듣기">${SPK}</button>` : ''}</div>
@@ -1107,7 +1129,7 @@ details.setbox > .sets{padding-top:10px}
     const pick = d => d.words.filter(w => markOk(w, exportOpt.only));
     const chosen = sorted().filter(d => exportOpt.sel.includes(d.id) && pick(d).length);
     chosen.forEach((d, di) => {
-      if (exportOpt.title) { out.push(withDot(d.name)); gapLines(); }
+      if (exportOpt.title) { out.push(withDot(d.name)); if (d.note) d.note.split('\n').filter(Boolean).forEach(l => out.push(withDot(l))); gapLines(); }
       const ws = exportOpt.order === 'rand' ? shuffle(pick(d)) : pick(d);
       ws.forEach((w, i) => {
         // 단어→뜻 세트를 srep번 반복. 반복 사이엔 간격 줄 1개, 다음 단어 전엔 설정한 간격만큼
