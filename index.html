@@ -30,8 +30,14 @@
   --ok:#6CC992; --ok-soft:#18332A; --bad:#EE8A7E; --bad-soft:#3A1F1C; --star:#F2B84B; --star-soft:#3A2D12; color-scheme:dark}
 
 *{box-sizing:border-box}
+/* 탭을 오가도 스크롤바 유무로 가운데가 흔들리지 않게 항상 스크롤 자리 확보 */
+html{overflow-y:scroll}
 #app{display:flex;flex-direction:column;gap:16px;min-width:0}
 .daybar{gap:10px}
+.addday-row{display:flex;align-items:center;gap:8px}
+.addday-row .kwlabel{font-size:13px;color:var(--muted);font-weight:600;flex:none}
+.addday-row input{flex:1;min-width:0;padding:7px 10px}
+.addday-row .btn{flex:none;white-space:nowrap}
 .dayhdr{display:flex;align-items:center;gap:10px;width:100%;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:10px;padding:10px 12px;cursor:pointer;font:inherit;text-align:left}
 .dayhdr .label{flex:none}
 .dayhdr .dpcur{flex:1;min-width:0;font-weight:700;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -70,6 +76,12 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 
 .panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:18px;display:flex;flex-direction:column;gap:16px}
 .dayhead{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.addbox{border:1px solid var(--line);border-radius:10px;padding:0 12px}
+.addbox > summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px;padding:11px 0}
+.addbox > summary::-webkit-details-marker{display:none}
+.addbox > summary::before{content:"+";display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:6px;background:var(--accent-soft);color:var(--accent);font-weight:700}
+.addbox[open] > summary::before{content:"−"}
+.addin{display:flex;flex-direction:column;gap:8px;padding-bottom:12px}
 .daynote{display:flex;flex-direction:column;gap:4px;background:var(--accent-soft);border-radius:10px;padding:10px 12px;cursor:text}
 .daynote .label{color:var(--accent)}
 .daynote textarea{min-height:0;resize:none;overflow:hidden;border:0;background:transparent;padding:0;font:600 16px/1.5 var(--f-ui);color:var(--ink);white-space:pre-wrap}
@@ -206,6 +218,8 @@ textarea{min-height:130px;font-family:var(--f-num);font-size:16px;resize:vertica
 .handle svg{width:22px;height:22px}
 .handle:hover{color:var(--accent);background:var(--accent-soft)}
 .ordrow .acts{gap:6px}
+.row.editrow{grid-template-columns:auto minmax(0,1fr) minmax(0,1.4fr) auto}
+.eicons{display:flex;align-items:center}
 .ordrow .acts .btn{min-width:38px}
 .row.dragging{position:relative;z-index:5;background:var(--surface);box-shadow:0 8px 24px color-mix(in srgb, #000 30%, transparent);border-radius:8px;cursor:grabbing}
 .row.flash{background:var(--accent-soft);border-radius:6px;transition:background .3s}
@@ -274,8 +288,10 @@ details.setbox > .sets{padding-top:10px}
   .daylist{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
   .daylist .chip{justify-content:space-between;min-width:0}
   .daylist .chip.add{grid-column:1 / -1;justify-content:center}
-  .panel{padding:14px}
-  .actionbar{margin:0 -14px -14px;padding-left:14px;padding-right:14px}
+  .wrap{padding-left:max(10px, env(safe-area-inset-left, 0px));padding-right:max(10px, env(safe-area-inset-right, 0px));padding-top:14px;gap:14px}
+  .panel{padding:12px}
+  .actionbar{margin:0 -12px -12px;padding-left:12px;padding-right:12px}
+  .listen{padding:10px}
   .sets{grid-template-columns:1fr 1fr}
   #xText{min-height:150px!important}
 }
@@ -284,7 +300,8 @@ details.setbox > .sets{padding-top:10px}
   .addform .btn{grid-column:1 / -1}
   .opts{grid-template-columns:1fr}
   .row{grid-template-columns:2.1em minmax(0,1fr) auto;row-gap:2px}
-  .row > .chk, .row > .idx, .row > .selb, .row > .marks, .row > .handle{grid-row:1 / span 2}
+  .row > .chk, .row > .idx, .row > .selb, .row > .marks, .row > .handle, .row > .eicons{grid-row:1 / span 2}
+  .row.editrow{grid-template-columns:auto minmax(0,1fr) auto}
   .row > .marks{flex-direction:column}
   .row .m{grid-column:2;grid-row:2}
   .row .acts{grid-column:3;grid-row:1 / span 2}
@@ -341,6 +358,8 @@ details.setbox > .sets{padding-top:10px}
   let curDay = null;
   let editingWord = null;
   let bulkOpen = false;
+  let addOpen = (() => { try { return localStorage.getItem('vocab-add-open') === '1'; } catch (e) { return false; } })();
+  const saveAddOpen = () => { try { localStorage.setItem('vocab-add-open', addOpen ? '1' : '0'); } catch (e) {} };
   let selecting = false;           // 선택 삭제 모드
   const picked = new Set();        // 선택된 단어 id
   // 삭제 확인 모달: 결과를 Promise<boolean>으로 돌려준다
@@ -366,8 +385,13 @@ details.setbox > .sets{padding-top:10px}
   // 목록(Day) 펼침 상태: 폰은 기본 접힘, PC는 기본 펼침. 기기별로 기억
   let dayListOpen = (() => { try { const v = localStorage.getItem('vocab-daylist-open'); if (v !== null) return v === '1'; } catch (e) {} return !isNarrow(); })();
   const saveDayListOpen = () => { try { localStorage.setItem('vocab-daylist-open', dayListOpen ? '1' : '0'); } catch (e) {} };
+  // 테스트·텍스트 뽑기의 범위 목록 펼침 상태(기기별 기억). 고른 목록이 없으면 항상 펼쳐 보여준다
+  let rangeOpen = (() => { try { const v = localStorage.getItem('vocab-range-open'); if (v !== null) return v === '1'; } catch (e) {} return !isNarrow(); })();
+  const saveRangeOpen = () => { try { localStorage.setItem('vocab-range-open', rangeOpen ? '1' : '0'); } catch (e) {} };
+  const rangeHdr = (id, names, open) => `<button class="dayhdr" id="${id}" type="button" aria-expanded="${open}"><span class="label">범위</span><span class="dpcur">${names.length ? esc(names.join(', ')) : '선택 안 함'}</span><span class="dpar">${open ? '접기' : (names.length > 1 ? `${names.length}개 · ` : '') + '목록 열기'}</span></button>`;
   let ordering = false;             // 순서 바꾸기 모드
-  function exitSelect() { selecting = false; picked.clear(); ordering = false; }
+  let editSnap = null;              // 리스트 편집 시작 시점의 단어 배열(취소용)
+  function exitSelect() { selecting = false; picked.clear(); ordering = false; editSnap = null; }
   const GRIP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M5 8h14M5 12h14M5 16h14"/></svg>';
   const setup = { sel: new Set(), dir: 'en', type: 'mc', count: 'all', nopt: '4', from: 'all' };
   // 테스트 설정(범위 제외)은 다음에도 유지
@@ -508,11 +532,20 @@ details.setbox > .sets{padding-top:10px}
   }
 
   // ---------- mutations ----------
+  // 새 목록 이름 = 키워드 + 번호. 번호는 '키워드 숫자' 형태의 이름만 세서 가장 큰 번호 + 1
+  let dayKeyword = (() => { try { return localStorage.getItem('vocab-day-keyword') || 'Day'; } catch (e) { return 'Day'; } })();
+  const saveKeyword = () => { try { localStorage.setItem('vocab-day-keyword', dayKeyword); } catch (e) {} };
+  const reEsc = t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  function nextNameFor(kw) {
+    kw = clean(kw) || 'Day';
+    const re = new RegExp('^' + reEsc(kw) + '\\s*(\\d+)$', 'i');
+    const n = days.reduce((m, d) => { const k = re.exec(String(d.name).trim()); return k ? Math.max(m, +k[1]) : m; }, 0) + 1;
+    return `${kw} ${n}`;
+  }
+  // 이미 쓰고 있는 키워드(이름 끝이 숫자인 목록의 앞부분)를 골라 쓸 수 있게
   function addDay(name) {
     const order = days.reduce((m, d) => Math.max(m, d.order ?? 0), 0) + 1;
-    // 새 Day 번호는 'Day 숫자' 이름만 세서 정한다(필수숙어처럼 이름을 바꾼 묶음은 번호에서 제외)
-    const nextNo = days.reduce((m, d) => { const k = /^day\s*(\d+)$/i.exec(String(d.name).trim()); return k ? Math.max(m, +k[1]) : m; }, 0) + 1;
-    const d = { id: uid('d'), name: name || `Day ${nextNo}`, order, words: [] };
+    const d = { id: uid('d'), name: name || nextNameFor(dayKeyword), order, words: [] };
     days.push(d); curDay = d.id; saveDay(d); setStatus(); return d;
   }
   function parseBulk(text) {
@@ -845,65 +878,78 @@ details.setbox > .sets{padding-top:10px}
     const rows = day.words.map((x, i) => editingWord === x.id
       ? `<div class="row editing" data-w="${x.id}"><span class="idx num">${i + 1}</span><input type="text" id="ew-${x.id}" value="${esc(x.w)}" aria-label="단어"><input type="text" id="em-${x.id}" value="${esc(x.m)}" aria-label="뜻"><span class="acts"><button class="btn sm" data-cancel>취소</button><button class="btn sm primary" data-save="${x.id}">저장</button></span></div>`
       : ordering
-      ? `<div class="row ordrow" data-w="${x.id}" data-ord="${x.id}"><span class="handle" title="끌어서 옮기기" aria-hidden="true">${GRIP}</span><span class="w">${esc(x.w)}</span><span class="m">${esc(x.m)}</span><span class="acts"><button class="btn sm" data-up="${x.id}" aria-label="${esc(x.w)} 위로" ${i ? '' : 'disabled'}>▲</button><button class="btn sm" data-down="${x.id}" aria-label="${esc(x.w)} 아래로" ${i < day.words.length - 1 ? '' : 'disabled'}>▼</button></span></div>`
-      : selecting
-      ? `<div class="row picking ${picked.has(x.id) ? 'picked' : ''}" data-w="${x.id}" data-pickrow="${x.id}"><button type="button" class="selb" data-pick="${x.id}" aria-pressed="${picked.has(x.id)}" aria-label="${esc(x.w)} 선택"><span class="dot">${DOT}</span></button><span class="w">${esc(x.w)}</span><span class="m">${esc(x.m)}</span><span class="acts"></span></div>`
+      ? `<div class="row ordrow editrow picking ${picked.has(x.id) ? 'picked' : ''}" data-w="${x.id}" data-ord="${x.id}" data-pickrow="${x.id}"><span class="eicons"><span class="handle" title="끌어서 옮기기" aria-hidden="true">${GRIP}</span><button type="button" class="selb" data-pick="${x.id}" aria-pressed="${picked.has(x.id)}" aria-label="${esc(x.w)} 선택"><span class="dot">${DOT}</span></button></span><span class="w">${esc(x.w)}</span><span class="m">${esc(x.m)}</span><span class="acts"><button class="btn sm" data-up="${x.id}" aria-label="${esc(x.w)} 위로" ${i ? '' : 'disabled'}>▲</button><button class="btn sm" data-down="${x.id}" aria-label="${esc(x.w)} 아래로" ${i < day.words.length - 1 ? '' : 'disabled'}>▼</button></span></div>`
       : `<div class="row" data-w="${x.id}">${marks(x.id, x.w)}<span class="w">${esc(x.w)}</span><span class="m">${esc(x.m)}</span><span class="acts">${TTS.ok ? `<button class="spk" data-say="${x.id}" aria-label="${esc(x.w)} 듣기" title="듣기">${SPK}</button>` : ''}<button class="ghost" data-edit="${x.id}">수정</button><button class="ghost" data-del="${x.id}">삭제</button></span></div>`).join('');
     app.innerHTML = `
       <div class="field daybar">
         <button class="dayhdr" id="dayPick" type="button" aria-expanded="${dayListOpen}"><span class="label">목록 ${list.length}개</span><span class="dpcur">${esc(day.name)}</span><span class="dpar">${dayListOpen ? '접기' : '목록 열기'}</span></button>
-        <div class="days daylist" id="dayChips" ${dayListOpen ? '' : 'hidden'}>${chips}<button class="chip add" id="addDay">+ Day 추가</button></div>
+        <div class="days daylist" id="dayChips" ${dayListOpen ? '' : 'hidden'}>${chips}</div>
+        ${dayListOpen ? `<div class="addday-row">
+          <label class="kwlabel" for="kwInput">키워드</label>
+          <input type="text" id="kwInput" value="${esc(dayKeyword)}" placeholder="Day" aria-label="새 목록 키워드" autocapitalize="off">
+          <button type="button" class="btn sm primary" id="addDay">+ <span id="kwPreview">${esc(nextNameFor(dayKeyword))}</span></button>
+        </div>` : ''}
       </div>
       <section class="panel">
         <div class="dayhead">
           <input class="dayname" id="dayname" value="${esc(day.name)}" aria-label="Day 이름">
           <span class="sub num" id="dayCount">${dayCountText(day)}</span>
           ${selecting || ordering ? '' : `<div class="dayacts">
-          <button class="btn sm" id="testThis" ${day.words.length ? '' : 'disabled'}>테스트</button>
           <button class="btn sm" id="toText" ${day.words.length ? '' : 'disabled'}>텍스트로 뽑기</button>
-          <button class="btn sm" id="ordMode" ${day.words.length > 1 ? '' : 'disabled'}>순서</button>
-          <button class="btn sm" id="selMode" ${day.words.length ? '' : 'disabled'}>선택</button>
+          <button class="btn sm" id="editMode" ${day.words.length ? '' : 'disabled'}>리스트 편집</button>
+          <button class="btn sm" id="noteBtn" ${day.note ? 'hidden' : ''}>주제 추가</button>
           <button class="btn sm danger" id="delDay">Day 삭제</button>
           </div>`}
         </div>
-        <label class="daynote ${day.note ? '' : 'empty'}" for="daynote"><span class="label">주제</span>
+        <label class="daynote" for="daynote" ${day.note ? '' : 'hidden'}><span class="label">주제</span>
           <textarea id="daynote" rows="1" placeholder="이 목록의 주제나 암기법을 적어 두세요">${esc(day.note || '')}</textarea></label>
-        ${selecting ? '<div class="selhint">삭제할 단어를 눌러 선택하세요.</div>' : ''}
-        ${ordering ? '<div class="selhint">왼쪽 ≡를 누른 채 위아래로 끌거나, ▲▼로 한 칸씩 옮기세요. 바로 저장돼요.</div>' : ''}
+        ${ordering ? '<div class="selhint">≡를 누른 채 끌거나 ▲▼로 순서를 바꿔요(바로 저장). 줄을 누르면 삭제할 단어로 선택돼요.</div>' : ''}
         ${TTS.ok && !selecting && !ordering ? '<div class="listen"><div id="playerBox" class="listen-in"></div><div id="ttsSet"></div></div>' : ''}
-        <form class="addform" id="addform" autocomplete="off" ${selecting || ordering ? 'hidden' : ''}>
-          <input type="text" id="nw" placeholder="단어 (예: abundant)" aria-label="단어">
-          <input type="text" id="nm" placeholder="뜻 (예: 풍부한)" aria-label="뜻">
-          <button class="btn primary" type="submit">추가</button>
-        </form>
-        <div class="bulk" ${selecting || ordering ? 'hidden' : ''}>
-          <button class="ghost" id="bulkToggle" style="align-self:flex-start">${bulkOpen ? '여러 개 붙여넣기 닫기' : '여러 개 한 번에 붙여넣기'}</button>
-          <div id="bulkBox" ${bulkOpen ? '' : 'hidden'} class="bulk">
+        <details class="addbox" id="addBox" ${addOpen || !day.words.length ? 'open' : ''} ${selecting || ordering ? 'hidden' : ''}>
+          <summary>단어 추가</summary>
+          <div class="addin">
+            <span class="label">하나씩</span>
+            <form class="addform" id="addform" autocomplete="off">
+              <input type="text" id="nw" placeholder="단어 (예: abundant)" aria-label="단어">
+              <input type="text" id="nm" placeholder="뜻 (예: 풍부한)" aria-label="뜻">
+              <button class="btn primary" type="submit">추가</button>
+            </form>
+            <span class="label">여러 개 한 번에</span>
             <textarea id="bulkText" placeholder="abundant - 풍부한&#10;reluctant, 꺼리는&#10;inevitable	피할 수 없는"></textarea>
             <div class="hint">한 줄에 하나씩. 단어와 뜻은 탭, " - ", 쉼표, 콜론 중 하나로 구분하세요. 엑셀에서 두 칸을 복사해 붙여넣어도 됩니다.</div>
-            <div><button class="btn" id="bulkAdd">붙여넣은 단어 추가</button></div>
+            <div><button class="btn" id="bulkAdd" type="button">붙여넣은 단어 추가</button></div>
           </div>
-        </div>
+        </details>
         <div class="list">${rows || `<div class="empty">이 Day에는 아직 단어가 없어요. 위에서 추가하세요.</div>`}</div>
-        ${selecting ? `<div class="actionbar selbar"><span class="selcount" id="selCount">${picked.size}개 선택</span>
+        ${ordering ? `<div class="actionbar selbar"><span class="selcount" id="selCount">${picked.size}개 선택</span>
           <button class="btn sm" id="selAllW" type="button">${picked.size === day.words.length && picked.size ? '전체 해제' : '전체 선택'}</button>
-          <button class="btn sm" id="selCancel" type="button">취소</button>
-          <button class="btn sm danger-fill" id="selDel" type="button" ${picked.size ? '' : 'disabled'}>삭제</button></div>` : ''}
-        ${ordering ? `<div class="actionbar selbar"><span class="selcount">순서 바꾸는 중</span><button class="btn sm primary" id="ordDone" type="button">완료</button></div>` : ''}
+          <button class="btn sm danger-fill" id="selDel" type="button" ${picked.size ? '' : 'disabled'}>삭제</button>
+          <button class="btn sm" id="editCancel" type="button">취소</button>
+          <button class="btn sm primary" id="editDone" type="button">완료</button></div>` : ''}
       </section>`;
 
     app.querySelectorAll('[data-day]').forEach(b => b.onclick = () => { if (curDay !== b.dataset.day) stopPlayer(); curDay = b.dataset.day; editingWord = null; exitSelect(); if (isNarrow()) { dayListOpen = false; saveDayListOpen(); } render(); });
     $('#dayPick').onclick = () => { dayListOpen = !dayListOpen; saveDayListOpen(); render(); };
-    $('#addDay').onclick = () => { addDay(); editingWord = null; render(); $('#nw')?.focus(); };
+    // 키워드: 입력하는 대로 기억하고, 버튼에는 다음 이름을 미리 보여준다
+    const kwIn = $('#kwInput');
+    if (kwIn) kwIn.addEventListener('input', () => { dayKeyword = clean(kwIn.value) || 'Day'; saveKeyword(); $('#kwPreview').textContent = nextNameFor(dayKeyword); });
+    $('#addDay') && ($('#addDay').onclick = () => {
+      addDay(); editingWord = null;
+      if (isNarrow()) { dayListOpen = false; saveDayListOpen(); }
+      render(); toast(`${days.find(d => d.id === curDay).name} 만들었어요`);
+    });
     const dn = $('#dayname');
     // 주제 메모: 입력하는 대로 높이를 맞추고, 손을 떼면 저장
     const dnote = $('#daynote');
     const fitNote = () => { dnote.style.height = 'auto'; dnote.style.height = dnote.scrollHeight + 'px'; };
     fitNote(); requestAnimationFrame(fitNote);
     let noteTimer = null;
-    const saveNote = () => { const v = cleanNote(dnote.value); if (v !== (day.note || '')) { day.note = v; saveDay(day); } dnote.closest('.daynote').classList.toggle('empty', !v); };
+    const noteBox = dnote.closest('.daynote'), noteBtn = $('#noteBtn');
+    const saveNote = () => { const v = cleanNote(dnote.value); if (v !== (day.note || '')) { day.note = v; saveDay(day); } if (noteBtn) noteBtn.hidden = !!v; };
+    // 주제가 비어 있으면 숨겨 두고, '주제 추가'를 누를 때만 보인다
+    noteBtn && (noteBtn.onclick = () => { noteBox.hidden = false; noteBtn.hidden = true; fitNote(); dnote.focus(); });
     dnote.addEventListener('input', () => { fitNote(); clearTimeout(noteTimer); noteTimer = setTimeout(saveNote, 600); });
-    dnote.addEventListener('blur', () => { clearTimeout(noteTimer); saveNote(); });
+    dnote.addEventListener('blur', () => { clearTimeout(noteTimer); saveNote(); if (!day.note) noteBox.hidden = true; });
     dn.onchange = () => { const v = clean(dn.value); if (v && v !== day.name) { day.name = v; saveDay(day); render(); } else dn.value = day.name; };
     dn.onkeydown = e => { if (e.key === 'Enter') dn.blur(); };
     $('#delDay') && ($('#delDay').onclick = async () => {
@@ -911,10 +957,16 @@ details.setbox > .sets{padding-top:10px}
       if (!ok) return;
       if (player && player.dayId === day.id) stopPlayer(); days = days.filter(d => d.id !== day.id); setup.sel.delete(day.id); removeDay(day.id); curDay = null; setStatus(); render(); toast(`${day.name} 삭제됨`);
     });
-    $('#testThis') && ($('#testThis').onclick = () => { setup.sel = new Set([day.id]); switchTab('test'); });
     $('#toText') && ($('#toText').onclick = () => { stopPlayer(); exportOpt.sel = [day.id]; view = 'export'; render(); });
-    $('#ordMode') && ($('#ordMode').onclick = () => { stopPlayer(); editingWord = null; selecting = false; picked.clear(); ordering = true; render(); });
-    $('#ordDone') && ($('#ordDone').onclick = () => { ordering = false; render(); toast('순서를 저장했어요'); });
+    $('#editMode') && ($('#editMode').onclick = () => { stopPlayer(); editingWord = null; picked.clear(); ordering = true; selecting = true; editSnap = { dayId: day.id, words: day.words.slice() }; render(); });
+    $('#editDone') && ($('#editDone').onclick = () => { exitSelect(); render(); });
+    // 취소: 편집을 시작하기 전 순서·단어로 되돌리고 나간다(편집 중 삭제한 단어도 복구)
+    $('#editCancel') && ($('#editCancel').onclick = () => {
+      const snap = editSnap;
+      const changed = snap && snap.dayId === day.id && (snap.words.length !== day.words.length || snap.words.some((w, k) => w !== day.words[k]));
+      if (changed) { day.words = snap.words.slice(); saveDay(day); setStatus(); }
+      exitSelect(); render(); if (changed) toast('편집 전으로 되돌렸어요');
+    });
     // ▲▼: 한 칸씩 이동
     const moveWord = (id, d) => { const i = day.words.findIndex(w => w.id === id), j = i + d; if (i < 0 || j < 0 || j >= day.words.length) return; [day.words[i], day.words[j]] = [day.words[j], day.words[i]]; saveDay(day); render(); };
     app.querySelectorAll('[data-up]').forEach(b => b.onclick = () => moveWord(b.dataset.up, -1));
@@ -947,35 +999,33 @@ details.setbox > .sets{padding-top:10px}
       scrollTimer = setInterval(edge, 30);
       h.addEventListener('pointermove', move); h.addEventListener('pointerup', end); h.addEventListener('pointercancel', end);
     }));
-    $('#selMode') && ($('#selMode').onclick = () => { stopPlayer(); editingWord = null; selecting = true; picked.clear(); render(); });
     // 선택 모드: 줄 아무 곳이나 눌러도 선택/해제. 화면 전체를 다시 그리지 않고 표시만 바꾼다
     const paintSel = () => {
       app.querySelectorAll('[data-pickrow]').forEach(r => { const on = picked.has(r.dataset.pickrow); r.classList.toggle('picked', on); r.querySelector('[data-pick]').setAttribute('aria-pressed', String(on)); });
       $('#selCount').textContent = `${picked.size}개 선택`; $('#selDel').disabled = !picked.size;
       $('#selAllW').textContent = picked.size === day.words.length && picked.size ? '전체 해제' : '전체 선택';
     };
-    app.querySelectorAll('[data-pickrow]').forEach(r => r.onclick = () => { const id = r.dataset.pickrow; picked.has(id) ? picked.delete(id) : picked.add(id); paintSel(); });
+    app.querySelectorAll('[data-pickrow]').forEach(r => r.onclick = e => { if (e.target.closest('.handle, [data-up], [data-down]')) return; const id = r.dataset.pickrow; picked.has(id) ? picked.delete(id) : picked.add(id); paintSel(); });
     $('#selAllW') && ($('#selAllW').onclick = () => { if (picked.size === day.words.length) picked.clear(); else day.words.forEach(w => picked.add(w.id)); paintSel(); });
-    $('#selCancel') && ($('#selCancel').onclick = () => { exitSelect(); render(); });
     $('#selDel') && ($('#selDel').onclick = async () => {
       const ws = day.words.filter(w => picked.has(w.id)); if (!ws.length) return;
       const shown = ws.slice(0, 6).map(w => `<li><b>${esc(w.w)}</b> · ${esc(w.m)}</li>`).join('') + (ws.length > 6 ? `<li>외 ${ws.length - 6}개</li>` : '');
       const ok = await confirmModal({ title: `단어 ${ws.length}개를 삭제할까요?`, html: `백업 파일이 없으면 되돌릴 수 없어요.<ul class="mlist">${shown}</ul>`, ok: `${ws.length}개 삭제` });
       if (!ok) return;
-      day.words = day.words.filter(w => !picked.has(w.id)); saveDay(day); exitSelect(); setStatus(); render(); toast(`${ws.length}개 삭제했어요`);
+      day.words = day.words.filter(w => !picked.has(w.id)); saveDay(day); picked.clear(); if (!day.words.length) exitSelect(); setStatus(); render(); toast(`${ws.length}개 삭제했어요`);
     });
     $('#addform').onsubmit = e => {
       e.preventDefault();
       const w = clean($('#nw').value), m = clean($('#nm').value);
       if (!w || !m) { toast('단어와 뜻을 모두 적어 주세요'); (w ? $('#nm') : $('#nw')).focus(); return; }
-      day.words.push({ id: uid('w'), w, m }); saveDay(day); setStatus(); render(); $('#nw').focus();
+      day.words.push({ id: uid('w'), w, m }); saveDay(day); setStatus(); addOpen = true; saveAddOpen(); render(); $('#nw').focus();
     };
     $('#nw').onkeydown = e => { if (e.key === 'Enter' && !$('#nm').value.trim()) { e.preventDefault(); $('#nm').focus(); } };
-    $('#bulkToggle').onclick = () => { bulkOpen = !bulkOpen; render(); if (bulkOpen) $('#bulkText').focus(); };
+    $('#addBox').addEventListener('toggle', e => { if (day.words.length) { addOpen = e.target.open; saveAddOpen(); } });
     $('#bulkAdd') && ($('#bulkAdd').onclick = () => {
       const items = parseBulk($('#bulkText').value);
       if (!items.length) { toast('인식된 줄이 없어요. "단어 - 뜻" 형식인지 확인해 주세요'); return; }
-      items.forEach(x => day.words.push({ id: uid('w'), ...x })); saveDay(day); setStatus(); bulkOpen = false; render(); toast(`${items.length}개 추가됨`);
+      items.forEach(x => day.words.push({ id: uid('w'), ...x })); saveDay(day); setStatus(); render(); toast(`${items.length}개 추가됨`);
     });
     app.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => { editingWord = b.dataset.edit; render(); $('#ew-' + editingWord)?.focus(); });
     app.querySelectorAll('[data-cancel]').forEach(b => b.onclick = () => { editingWord = null; render(); });
@@ -1011,6 +1061,7 @@ details.setbox > .sets{padding-top:10px}
       $('#go').onclick = () => switchTab('words'); return;
     }
     const pool = poolFor(setup.sel);
+    const rOpen = rangeOpen || !setup.sel.size;
     const total = days.reduce((s, d) => s + d.words.length, 0);
     const mcOk = total >= 2;
     if (!mcOk && setup.type === 'mc') setup.type = 'type';
@@ -1019,8 +1070,9 @@ details.setbox > .sets{padding-top:10px}
     const focusTotal = list.filter(d => setup.sel.has(d.id)).reduce((s, d) => s + d.words.filter(w => w.focus).length, 0);
     const emptyMsg = !setup.sel.size ? 'Day를 하나 이상 고르세요' : setup.target === 'focus' ? '고른 목록에 집중(★) 표시한 단어가 없어요' : '고른 목록에 체크한 단어가 없어요. 단어장에서 체크하세요';
     app.innerHTML = `<section class="panel">
-      <div class="field"><span class="label">범위</span>
-        <div class="days">${list.map(d => `<button class="chip" data-sel="${d.id}" aria-pressed="${setup.sel.has(d.id)}">${esc(d.name)} <span class="num">${setup.target === 'checked' ? '✓' + d.words.filter(w => w.checked).length : setup.target === 'focus' ? '★' + d.words.filter(w => w.focus).length : d.words.length}</span></button>`).join('')}
+      <div class="field daybar">
+        ${rangeHdr('rangePick', list.filter(d => setup.sel.has(d.id)).map(d => d.name), rOpen)}
+        <div class="days daylist" ${rOpen ? '' : 'hidden'}>${list.map(d => `<button class="chip" data-sel="${d.id}" aria-pressed="${setup.sel.has(d.id)}">${esc(d.name)} <span class="num">${setup.target === 'checked' ? '✓' + d.words.filter(w => w.checked).length : setup.target === 'focus' ? '★' + d.words.filter(w => w.focus).length : d.words.length}</span></button>`).join('')}
         <button class="chip add" id="selAll">${setup.sel.size === list.length ? '선택 해제' : '전체 선택'}</button></div></div>
       <div class="olist" id="setupOpts">
         ${segRow('setup', 'target', '대상', setup.target, [['all', '전체'], ['checked', `체크 (${checkedTotal})`], ['focus', `★ 집중 (${focusTotal})`]])}
@@ -1037,6 +1089,7 @@ details.setbox > .sets{padding-top:10px}
         <button class="btn primary" id="start" ${pool.length ? '' : 'disabled'}>시작</button></div>
     </section>`;
     app.querySelectorAll('[data-sel]').forEach(b => b.onclick = () => { const id = b.dataset.sel; setup.sel.has(id) ? setup.sel.delete(id) : setup.sel.add(id); render(); });
+    $('#rangePick').onclick = () => { rangeOpen = !rOpen; saveRangeOpen(); render(); };
     $('#selAll').onclick = () => { if (setup.sel.size === list.length) setup.sel.clear(); else list.forEach(d => setup.sel.add(d.id)); render(); };
     bindSegs($('#setupOpts'), (k, v) => {
       setup[k] = String(v); saveSetup(); render();
@@ -1281,12 +1334,13 @@ details.setbox > .sets{padding-top:10px}
     const text = buildText();
     const cnt = d => d.words.filter(w => markOk(w, exportOpt.only)).length;
     const nWords = list.filter(d => exportOpt.sel.includes(d.id)).reduce((s, d) => s + cnt(d), 0);
+    const xOpen = rangeOpen || !exportOpt.sel.length;
     const nChkSel = list.filter(d => exportOpt.sel.includes(d.id)).reduce((s, d) => s + d.words.filter(w => w.checked).length, 0);
     const nFocSel = list.filter(d => exportOpt.sel.includes(d.id)).reduce((s, d) => s + d.words.filter(w => w.focus).length, 0);
     app.innerHTML = `<section class="panel">
       <div class="dayhead"><strong style="font-size:18px;flex:1">텍스트로 뽑기</strong><button class="btn sm" id="xBack">단어장으로</button></div>
       <div class="hint">텍스트 리더 앱용이에요. 단어와 뜻 끝에 마침표를 붙이고, 세트 사이에 간격 줄을 넣어 쉬어 가며 읽게 해요.</div>
-      <div class="field"><span class="label">범위</span><div class="days">${list.map(d => `<button class="chip" data-xs="${d.id}" aria-pressed="${exportOpt.sel.includes(d.id)}">${esc(d.name)} <span class="num">${exportOpt.only === 'focus' ? '★' + cnt(d) : exportOpt.only ? '✓' + cnt(d) : cnt(d)}</span></button>`).join('')}</div></div>
+      <div class="field daybar">${rangeHdr('xRangePick', list.filter(d => exportOpt.sel.includes(d.id)).map(d => d.name), xOpen)}<div class="days daylist" ${xOpen ? '' : 'hidden'}>${list.map(d => `<button class="chip" data-xs="${d.id}" aria-pressed="${exportOpt.sel.includes(d.id)}">${esc(d.name)} <span class="num">${exportOpt.only === 'focus' ? '★' + cnt(d) : exportOpt.only ? '✓' + cnt(d) : cnt(d)}</span></button>`).join('')}</div></div>
       <div class="olist" id="xTarget">${segRow('xt', 'only', '대상', exportOpt.only, [[false, '전체'], [true, `체크 (${nChkSel})`], ['focus', `★ 집중 (${nFocSel})`]])}</div>
       <details class="setbox" id="xDetails" ${exportSetOpen ? 'open' : ''}><summary>내보내기 설정 <span class="hint" id="xSum">${exportSummary()}</span></summary>
         <div class="olist" id="xOpts">
@@ -1306,6 +1360,7 @@ details.setbox > .sets{padding-top:10px}
         <textarea id="xText" readonly style="min-height:220px">${esc(text)}</textarea></div>
       <div class="actionbar"><button class="btn primary" id="xCopy" ${nWords ? '' : 'disabled'}>전체 복사</button><button class="btn" id="xSave" ${nWords ? '' : 'disabled'}>파일로 저장</button></div>
     </section>`;
+    $('#xRangePick').onclick = () => { rangeOpen = !xOpen; saveRangeOpen(); render(); };
     $('#xBack').onclick = () => { view = 'words'; render(); };
     app.querySelectorAll('[data-xs]').forEach(b => b.onclick = () => { const id = b.dataset.xs; exportOpt.sel = exportOpt.sel.includes(id) ? exportOpt.sel.filter(x => x !== id) : exportOpt.sel.concat(id); render(); });
     bindSegs($('#xTarget'), (k, v) => { exportOpt.only = v; saveExportOpt(); render(); });
@@ -1365,6 +1420,8 @@ details.setbox > .sets{padding-top:10px}
   // ---------- tabs ----------
   function switchTab(t) {
     stopPlayer(); cancelSpeech(); exitSelect();
+    // 테스트로 갈 때 고른 범위가 없으면 지금 보던 목록을 범위로
+    if (t !== 'words' && !setup.sel.size && curDay) setup.sel.add(curDay);
     view = t === 'words' ? 'words' : 'setup';
     $('#tab-words').setAttribute('aria-selected', t === 'words');
     $('#tab-test').setAttribute('aria-selected', t !== 'words');
