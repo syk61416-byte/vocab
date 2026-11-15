@@ -393,9 +393,9 @@ details.setbox > .sets{padding-top:10px}
   let editSnap = null;              // 리스트 편집 시작 시점의 단어 배열(취소용)
   function exitSelect() { selecting = false; picked.clear(); ordering = false; editSnap = null; }
   const GRIP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M5 8h14M5 12h14M5 16h14"/></svg>';
-  const setup = { sel: new Set(), dir: 'en', type: 'mc', count: 'all', nopt: '4', from: 'all' };
+  const setup = { sel: new Set(), dir: 'en', type: 'mc', count: 'all', nopt: '4', from: 'all', pick: 'rand' };
   // 테스트 설정(범위 제외)은 다음에도 유지
-  try { const o = JSON.parse(localStorage.getItem('vocab-setup') || '{}'); ['dir', 'type', 'count', 'nopt', 'from'].forEach(k => { if (typeof o[k] === 'string') setup[k] = o[k]; }); } catch (e) {}
+  try { const o = JSON.parse(localStorage.getItem('vocab-setup') || '{}'); ['dir', 'type', 'count', 'nopt', 'from', 'pick'].forEach(k => { if (typeof o[k] === 'string') setup[k] = o[k]; }); } catch (e) {}
   const saveSetup = () => { try { const { sel, ...rest } = setup; localStorage.setItem('vocab-setup', JSON.stringify(rest)); } catch (e) {} };
   let quiz = null;
 
@@ -1078,10 +1078,12 @@ details.setbox > .sets{padding-top:10px}
         ${segRow('setup', 'target', '대상', setup.target, [['all', '전체'], ['checked', `체크 (${checkedTotal})`], ['focus', `★ 집중 (${focusTotal})`]])}
         ${setup.type === 'recall' ? '' : segRow('setup', 'dir', '문제', setup.dir, [['en', '단어→뜻'], ['ko', '뜻→단어'], ['mix', '섞기']].concat(TTS.ok ? [['listen', '듣기']] : []))}
         ${segRow('setup', 'type', '답하기', setup.type, [['mc', '객관식', !mcOk], ['type', '직접 입력'], ['recall', '전부 써보기']])}
-        ${setup.type === 'mc' ? segRow('setup', 'nopt', '보기 수', setup.nopt, [['4', '4개'], ['3', '3개'], ['2', '2개']]) : ''}
+        ${setup.type === 'mc' ? segRow('setup', 'nopt', '보기 수', setup.nopt, [['2', '2'], ['3', '3'], ['4', '4'], ['5', '5'], ['6', '6']]) : ''}
         ${setup.type === 'mc' ? segRow('setup', 'from', '보기 출처', setup.from, [['all', '모든 목록'], ['day', '같은 목록만']]) : ''}
+        ${setup.type === 'mc' ? segRow('setup', 'pick', '오답 보기', setup.pick, [['rand', '무작위'], ['similar', '헷갈리게']]) : ''}
         ${setup.type === 'recall' ? '' : segRow('setup', 'count', '문항 수', setup.count, [['all', '전체'], ['10', '10'], ['20', '20'], ['30', '30']])}
       </div>
+      ${setup.type === 'mc' && setup.pick === 'similar' ? '<div class="hint">오답 보기를 정답과 철자가 비슷한 단어(affect·effect 등)나 뜻이 겹치는 단어 위주로 골라요.</div>' : ''}
       ${setup.type === 'mc' && setup.from === 'day' ? '<div class="hint">오답 보기를 문제 단어와 같은 목록에서만 뽑아요. 그 목록에 서로 다른 뜻이 2가지뿐이면 보기도 2개만 나와요.</div>' : ''}
       ${setup.type === 'recall' ? '<div class="hint">목록의 주제만 보고 그 목록의 영어 단어를 기억나는 대로 전부 적어요. 다 적으면 맞힌 것·놓친 것·목록에 없는 것을 채점해요.</div>' : ''}
       <div class="hint" id="dirHint" ${setup.type === 'recall' ? 'hidden' : ''}>${({ en: '영어 단어를 보고 뜻을 고릅니다.', ko: '뜻을 보고 영어 단어를 고릅니다.', mix: '두 방향이 무작위로 섞여 나옵니다.', listen: '단어를 숨기고, 스피커 버튼을 눌러 소리로 듣고 뜻을 고릅니다.' })[setup.dir]}</div>
@@ -1178,6 +1180,34 @@ details.setbox > .sets{padding-top:10px}
     $('#rcSetup').onclick = () => { recall = null; view = 'setup'; render(); };
   }
 
+  // ---------- 유사도(헷갈리는 오답 고르기용) ----------
+  const bigrams = t => { const out = []; for (let i = 0; i < t.length - 1; i++) out.push(t.slice(i, i + 2)); return out; };
+  function dice(a, b) {
+    if (!a || !b) return 0;
+    if (a === b) return 1;
+    const A = bigrams(a), B = bigrams(b);
+    if (!A.length || !B.length) return 0;
+    const m = new Map(); A.forEach(x => m.set(x, (m.get(x) || 0) + 1));
+    let hit = 0; B.forEach(x => { const c = m.get(x); if (c) { hit++; m.set(x, c - 1); } });
+    return 2 * hit / (A.length + B.length);
+  }
+  function engSim(a, b) {
+    a = keyOf(a); b = keyOf(b);
+    if (!a || !b || a === b) return 0;
+    let s = dice(a, b);
+    if (a.slice(0, 3) === b.slice(0, 3)) s += 0.15;                     // 같은 접두(pre-, con- 등)
+    if (a.length > 4 && b.length > 4 && a.slice(-3) === b.slice(-3)) s += 0.1; // 같은 어미(-tion, -ate 등)
+    if (Math.abs(a.length - b.length) <= 2) s += 0.05;
+    return s;
+  }
+  const korText = t => String(t).replace(/\([^)]*\)/g, '').replace(/[^\uAC00-\uD7A3]/g, '');
+  function korSim(a, b) {
+    a = korText(a); b = korText(b);
+    if (!a || !b || a === b) return 0;
+    return dice(a, b);
+  }
+  const wordSim = (x, y) => Math.max(engSim(x.w, y.w), korSim(x.m, y.m) * 0.9);
+
   // ---------- quiz ----------
   function startQuiz(pool, limitAll) {
     let items = shuffle(pool);
@@ -1194,7 +1224,14 @@ details.setbox > .sets{padding-top:10px}
           const seen = new Set([norm(w[key])]);
           const distract = [];
           const src = setup.from === 'day' && byDay.has(w.dayId) ? byDay.get(w.dayId) : all;
-          for (const x of shuffle(src)) { const k = norm(x[key]); if (!seen.has(k)) { seen.add(k); distract.push(x[key]); } if (distract.length >= nDistract) break; }
+          let cands = shuffle(src);
+          if (setup.pick === 'similar') {
+            // 헷갈리게: 영어 철자가 비슷하거나(앞뒤 글자·글자쌍 겹침) 한글 뜻이 겹치는 순으로. 약간의 무작위로 매번 조금씩 다르게
+            const sc = new Map(cands.map(x => [x, wordSim(w, x) + Math.random() * 0.08]));
+            cands = cands.filter(x => x !== w && x.id !== w.id).sort((a, b) => sc.get(b) - sc.get(a));
+          }
+          // 뜻→단어 문제에서 뜻이 똑같은 단어(predict·foresee 등)는 정답이 둘이 되므로 오답 보기에서 뺀다
+          for (const x of cands) { if (key === 'w' && norm(x.m) === norm(w.m)) continue; const k = norm(x[key]); if (!seen.has(k)) { seen.add(k); distract.push(x[key]); } if (distract.length >= nDistract) break; }
           options = shuffle([w[key], ...distract]);
         }
         return { w, dir, options, answer: null, correct: null };
@@ -1268,7 +1305,7 @@ details.setbox > .sets{padding-top:10px}
     if (e.target && e.target.id === 'qsInput') return;
     const it = quiz.items[quiz.i];
     if (e.key === 'ArrowLeft' && document.activeElement?.tagName !== 'INPUT' && quiz.i > 0) { quiz.i--; render(); return; }
-    if (it.options && it.answer === null && /^[1-4]$/.test(e.key) && document.activeElement?.tagName !== 'INPUT') { const o = it.options[+e.key - 1]; if (o !== undefined) answer(o); }
+    if (it.options && it.answer === null && /^[1-6]$/.test(e.key) && document.activeElement?.tagName !== 'INPUT') { const o = it.options[+e.key - 1]; if (o !== undefined) answer(o); }
   });
 
   function renderResult() {
