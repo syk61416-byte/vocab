@@ -752,8 +752,15 @@ details.setbox > .sets{padding-top:10px}
     // 화면 따라가기: 읽는 단어가 바뀔 때만 한 번 이동(같은 단어 반복 중엔 손으로 스크롤해도 끌려가지 않게)
     if (ttsOpt.follow && player && player.followId !== id) {
       player.followId = id;
-      const smooth = !window.matchMedia || !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      try { r.scrollIntoView({ block: 'center', behavior: smooth ? 'smooth' : 'auto' }); } catch (e) {}
+      // 브라우저의 scrollIntoView 대신 위치를 직접 계산해 창(window)만 스크롤한다(iOS에서 엉뚱한 위치로 가는 문제 방지)
+      // 보이는 화면 높이는 주소창·툴바를 뺀 visualViewport 기준. 이미 화면 가운데 영역(위아래 25%)에 있으면 움직이지 않음
+      const vh = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
+      const rect = r.getBoundingClientRect();
+      if (rect.top < vh * 0.25 || rect.bottom > vh * 0.75) {
+        const top = Math.max(0, window.scrollY + rect.top - (vh - rect.height) / 2);
+        const smooth = !window.matchMedia || !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        try { window.scrollTo({ top, behavior: smooth ? 'smooth' : 'auto' }); } catch (e) { window.scrollTo(0, top); }
+      }
     }
   }
   function paintPlayer() {
