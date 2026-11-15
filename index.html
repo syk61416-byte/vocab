@@ -71,6 +71,13 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 .daynote textarea::placeholder{font-weight:400;color:var(--muted)}
 .daynote.empty{background:transparent;border:1px dashed var(--line)}
 .daynote.empty .label{color:var(--muted)}
+.rcbar{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.rcbar .num{font-weight:600;color:var(--accent)}
+.rchint{background:var(--bg);border:1px dashed var(--line);border-radius:8px;padding:10px 12px;font-size:16px;letter-spacing:.02em;overflow-wrap:anywhere}
+.rchint .num{font-size:12px;color:var(--muted);margin-left:1px}
+.rcextra{display:flex;flex-wrap:wrap;gap:6px}
+.rcextra span{background:var(--star-soft);color:var(--ink);border-radius:6px;padding:4px 8px;font-size:14px}
+.qnote .label{color:var(--accent);text-transform:none;letter-spacing:0}
 .qnote{background:var(--accent-soft);color:var(--ink);border-radius:8px;padding:8px 12px;font-size:14px;font-weight:600;white-space:pre-wrap;overflow-wrap:anywhere}
 .dayname{font:700 20px var(--f-ui);border:1px solid transparent;background:none;color:var(--ink);padding:2px 6px;margin-left:-6px;border-radius:6px;width:12ch;min-width:0;flex:1 1 140px}
 .dayname:hover{border-color:var(--line)}
@@ -976,15 +983,16 @@ details.setbox > .sets{padding-top:10px}
         <button class="chip add" id="selAll">${setup.sel.size === list.length ? '선택 해제' : '전체 선택'}</button></div></div>
       <div class="olist" id="setupOpts">
         ${segRow('setup', 'target', '대상', setup.target, [['all', '전체'], ['checked', `체크 (${checkedTotal})`], ['focus', `★ 집중 (${focusTotal})`]])}
-        ${segRow('setup', 'dir', '문제', setup.dir, [['en', '단어→뜻'], ['ko', '뜻→단어'], ['mix', '섞기']].concat(TTS.ok ? [['listen', '듣기']] : []))}
-        ${segRow('setup', 'type', '답하기', setup.type, [['mc', '객관식', !mcOk], ['type', '직접 입력']])}
+        ${setup.type === 'recall' ? '' : segRow('setup', 'dir', '문제', setup.dir, [['en', '단어→뜻'], ['ko', '뜻→단어'], ['mix', '섞기']].concat(TTS.ok ? [['listen', '듣기']] : []))}
+        ${segRow('setup', 'type', '답하기', setup.type, [['mc', '객관식', !mcOk], ['type', '직접 입력'], ['recall', '전부 써보기']])}
         ${setup.type === 'mc' ? segRow('setup', 'nopt', '보기 수', setup.nopt, [['4', '4개'], ['3', '3개'], ['2', '2개']]) : ''}
         ${setup.type === 'mc' ? segRow('setup', 'from', '보기 출처', setup.from, [['all', '모든 목록'], ['day', '같은 목록만']]) : ''}
-        ${segRow('setup', 'count', '문항 수', setup.count, [['all', '전체'], ['10', '10'], ['20', '20'], ['30', '30']])}
+        ${setup.type === 'recall' ? '' : segRow('setup', 'count', '문항 수', setup.count, [['all', '전체'], ['10', '10'], ['20', '20'], ['30', '30']])}
       </div>
       ${setup.type === 'mc' && setup.from === 'day' ? '<div class="hint">오답 보기를 문제 단어와 같은 목록에서만 뽑아요. 그 목록에 서로 다른 뜻이 2가지뿐이면 보기도 2개만 나와요.</div>' : ''}
-      <div class="hint" id="dirHint">${({ en: '영어 단어를 보고 뜻을 고릅니다.', ko: '뜻을 보고 영어 단어를 고릅니다.', mix: '두 방향이 무작위로 섞여 나옵니다.', listen: '단어를 숨기고, 스피커 버튼을 눌러 소리로 듣고 뜻을 고릅니다.' })[setup.dir]}</div>
-      <div class="setupfoot"><span class="sub">${pool.length ? `${n}문제 · 순서는 매번 랜덤` : emptyMsg}</span>
+      ${setup.type === 'recall' ? '<div class="hint">목록의 주제만 보고 그 목록의 영어 단어를 기억나는 대로 전부 적어요. 다 적으면 맞힌 것·놓친 것·목록에 없는 것을 채점해요.</div>' : ''}
+      <div class="hint" id="dirHint" ${setup.type === 'recall' ? 'hidden' : ''}>${({ en: '영어 단어를 보고 뜻을 고릅니다.', ko: '뜻을 보고 영어 단어를 고릅니다.', mix: '두 방향이 무작위로 섞여 나옵니다.', listen: '단어를 숨기고, 스피커 버튼을 눌러 소리로 듣고 뜻을 고릅니다.' })[setup.dir]}</div>
+      <div class="setupfoot"><span class="sub">${pool.length ? (setup.type === 'recall' ? `단어 ${recallKeys(pool).length}개 떠올리기` : `${n}문제 · 순서는 매번 랜덤`) : emptyMsg}</span>
         <button class="btn primary" id="start" ${pool.length ? '' : 'disabled'}>시작</button></div>
     </section>`;
     app.querySelectorAll('[data-sel]').forEach(b => b.onclick = () => { const id = b.dataset.sel; setup.sel.has(id) ? setup.sel.delete(id) : setup.sel.add(id); render(); });
@@ -992,7 +1000,88 @@ details.setbox > .sets{padding-top:10px}
     bindSegs($('#setupOpts'), (k, v) => {
       setup[k] = String(v); saveSetup(); render();
     });
-    $('#start').onclick = () => startQuiz(poolFor(setup.sel));
+    $('#start').onclick = () => setup.type === 'recall' ? startRecall(poolFor(setup.sel)) : startQuiz(poolFor(setup.sel));
+  }
+
+  // ---------- 전부 써보기(회상 테스트) ----------
+  // 단어 칸에서 '영어 표제어'만 뽑는다: 취소선 글자·앞의 *·괄호 설명·한글 뜻·O to V 같은 자리표시 제거
+  function headOf(text) {
+    let t = String(text).replace(/.\u0336/g, '').replace(/^\s*\*+/, '').replace(/\([^)]*\)/g, ' ');
+    const m = t.match(/^[\sA-Za-z'’\-.\/]*/);
+    t = (m ? m[0] : '').replace(/\s+/g, ' ').trim();
+    t = t.replace(/(\s+(O|A|B|sb|sth))?(\s+to\s+V)?$/i, '').replace(/\s+(O|A|B)$/, '').trim();
+    return t;
+  }
+  const keyOf = t => headOf(t).toLowerCase().replace(/[^a-z]/g, '');
+  const inputKey = t => String(t).toLowerCase().replace(/\b(o|a|b)\s+to\s+v\b/g, '').replace(/[^a-z]/g, '');
+  // 같은 표제어(예: agree to / agree with)는 하나로 묶어 한 번만 적으면 되게
+  function recallKeys(pool) {
+    const map = new Map();
+    for (const w of pool) { const k = keyOf(w.w); if (!k) continue; if (!map.has(k)) map.set(k, { key: k, head: headOf(w.w), items: [] }); map.get(k).items.push(w); }
+    return [...map.values()];
+  }
+  let recall = null;
+  function startRecall(pool) {
+    const groups = recallKeys(pool);
+    const dayIds = [...new Set(pool.map(w => w.dayId))];
+    recall = { groups, dayIds, input: '', hint: false, graded: null };
+    view = 'recall'; render();
+  }
+  function parseRecallInput(text) { return String(text).split(/[\n,;\/]+/).map(x => x.trim()).filter(Boolean); }
+  function recallMatch() {
+    const keys = new Set(recall.groups.map(g => g.key));
+    const typed = parseRecallInput(recall.input);
+    const hit = new Set(), extra = [];
+    for (const t of typed) { const k = inputKey(t); if (!k) continue; if (keys.has(k)) hit.add(k); else extra.push(t); }
+    return { hit, extra };
+  }
+  function topicsHtml() {
+    return recall.dayIds.map(id => days.find(d => d.id === id)).filter(Boolean).map(d => `<div class="qnote"><span class="label">${esc(d.name)}</span>${d.note ? '<br>' + esc(d.note) : ''}</div>`).join('');
+  }
+  function firstLetterHint() {
+    // 목록 순서대로 첫 글자를 묶어 보여준다: p2 · o1 · r3 …
+    const seq = [];
+    for (const g of recall.groups) { const c = g.head[0].toLowerCase(); if (seq.length && seq[seq.length - 1][0] === c) seq[seq.length - 1][1]++; else seq.push([c, 1]); }
+    return seq.map(([c, n]) => `<b>${esc(c)}</b>${n > 1 ? `<span class="num">×${n}</span>` : ''}`).join(' · ');
+  }
+  function renderRecall() {
+    const total = recall.groups.length;
+    if (!recall.graded) {
+      const { hit } = recallMatch();
+      app.innerHTML = `<section class="panel">
+        ${topicsHtml()}
+        <div class="hint">이 목록의 영어 단어 <b>${total}개</b>를 기억나는 대로 적어 보세요. 한 줄에 하나씩, 또는 쉼표로 구분해요. 순서는 상관없고 대소문자는 구분하지 않아요.</div>
+        <textarea id="rcInput" placeholder="permit&#10;persuade&#10;order" autocapitalize="off" autocorrect="off" spellcheck="false" style="min-height:220px">${esc(recall.input)}</textarea>
+        <div class="rcbar"><span class="num" id="rcCount">맞힌 단어 ${hit.size} / ${total}</span><button class="btn sm" id="rcHint" type="button">${recall.hint ? '힌트 숨기기' : '첫 글자 힌트'}</button></div>
+        <div class="rchint" id="rcHintBox" ${recall.hint ? '' : 'hidden'}>${firstLetterHint()}</div>
+        <div class="resbtns"><button class="btn primary" id="rcGrade" type="button">채점</button><button class="btn" id="rcQuit" type="button">그만하기</button></div>
+      </section>`;
+      const ta = $('#rcInput');
+      ta.addEventListener('input', () => { recall.input = ta.value; $('#rcCount').textContent = `맞힌 단어 ${recallMatch().hit.size} / ${total}`; });
+      $('#rcHint').onclick = () => { recall.hint = !recall.hint; $('#rcHintBox').hidden = !recall.hint; $('#rcHint').textContent = recall.hint ? '힌트 숨기기' : '첫 글자 힌트'; };
+      $('#rcGrade').onclick = () => { recall.input = ta.value; recall.graded = recallMatch(); render(); };
+      $('#rcQuit').onclick = () => { recall = null; view = 'setup'; render(); };
+      return;
+    }
+    const { hit, extra } = recall.graded;
+    const missed = recall.groups.filter(g => !hit.has(g.key)), got = recall.groups.filter(g => hit.has(g.key));
+    const rows = gs => gs.map(g => g.items.map(w => `<div class="row">${marks(w.id, w.w)}<span class="w">${esc(w.w)}</span><span class="m">${esc(w.m)}</span><span class="sub tag">${esc(w.day)}</span></div>`).join('')).join('');
+    app.innerHTML = `<section class="panel">
+      ${topicsHtml()}
+      <div class="score"><span class="big">${got.length}</span><span class="of num">/ ${total}</span><span class="sub">${total ? Math.round(got.length / total * 100) + '%' : ''}</span></div>
+      <div class="resbtns">
+        ${missed.length ? '<button class="btn" id="rcFocus" type="button">★ 놓친 것 모두 집중</button>' : ''}
+        <button class="btn primary" id="rcAgain" type="button">다시 써보기</button>
+        <button class="btn" id="rcSetup" type="button">설정 바꾸기</button>
+      </div>
+      ${missed.length ? `<div class="field"><span class="label">놓친 단어 ${missed.length}</span><div class="list wronglist">${rows(missed)}</div></div>` : '<div class="fb ok"><b>전부 떠올렸어요</b></div>'}
+      ${extra.length ? `<div class="field"><span class="label">목록에 없는 입력 ${extra.length}</span><div class="rcextra">${extra.map(x => `<span>${esc(x)}</span>`).join('')}</div><span class="hint">철자가 틀렸거나 이 목록에 없는 단어예요.</span></div>` : ''}
+      ${got.length ? `<details class="setbox"><summary>맞힌 단어 ${got.length}</summary><div class="list wronglist">${rows(got)}</div></details>` : ''}
+    </section>`;
+    bindChecks(app);
+    $('#rcFocus') && ($('#rcFocus').onclick = () => { const ids = missed.flatMap(g => g.items.map(w => w.id)); ids.forEach(id => { setFocus(id, true); paintStars(id); }); toast(`${ids.length}개 집중 표시했어요`); });
+    $('#rcAgain').onclick = () => { recall.input = ''; recall.graded = null; recall.hint = false; render(); };
+    $('#rcSetup').onclick = () => { recall = null; view = 'setup'; render(); };
   }
 
   // ---------- quiz ----------
@@ -1255,6 +1344,7 @@ details.setbox > .sets{padding-top:10px}
     else if (view === 'setup') renderSetup();
     else if (view === 'import') renderImport();
     else if (view === 'export') renderExport();
+    else if (view === 'recall') renderRecall();
     else if (view === 'quiz') renderQuiz();
     else renderResult();
     // 검색창: 단어장과 문제 풀이 화면에서 보임
