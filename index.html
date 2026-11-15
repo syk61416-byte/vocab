@@ -315,6 +315,7 @@ details.setbox > .sets{padding-top:10px}
   </div>
   <main id="app"></main>
   <footer class="backup">
+    <span class="hint" id="appVer"></span>
     <span class="hint">단어는 이 브라우저에만 저장돼요. 브라우저 데이터를 지우면 사라지니 가끔 백업 파일을 받아 두세요.</span>
     <span class="resbtns"><button class="btn sm" id="exportBtn">백업 파일 받기</button><button class="btn sm" id="importBtn" type="button">백업 불러오기</button><input type="file" id="importFile" class="vh" tabindex="-1" aria-hidden="true"><button class="btn sm" id="reloadBtn" type="button" title="최신 버전을 다시 받아옵니다. 단어는 그대로예요">새로 불러오기</button></span>
   </footer>
@@ -384,6 +385,7 @@ details.setbox > .sets{padding-top:10px}
 
   // ---------- storage (localStorage only) ----------
   // 저장 형식: localStorage['vocab-days-v1'] = JSON 문자열 { days:[...] } 
+  const APP_VER = '2026.11.15-follow2';
   const LKEY = 'vocab-days-v1', BKEY = 'vocab-last-backup';
   let storageOk = true;
 
@@ -755,11 +757,14 @@ details.setbox > .sets{padding-top:10px}
       // 브라우저의 scrollIntoView 대신 위치를 직접 계산해 창(window)만 스크롤한다(iOS에서 엉뚱한 위치로 가는 문제 방지)
       // 보이는 화면 높이는 주소창·툴바를 뺀 visualViewport 기준. 이미 화면 가운데 영역(위아래 25%)에 있으면 움직이지 않음
       const vh = (window.visualViewport && window.visualViewport.height) || window.innerHeight;
-      const rect = r.getBoundingClientRect();
-      if (rect.top < vh * 0.25 || rect.bottom > vh * 0.75) {
-        const top = Math.max(0, window.scrollY + rect.top - (vh - rect.height) / 2);
-        const smooth = !window.matchMedia || !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-        try { window.scrollTo({ top, behavior: smooth ? 'smooth' : 'auto' }); } catch (e) { window.scrollTo(0, top); }
+      // 문서 기준 위치: offsetTop을 부모까지 더한다(getBoundingClientRect·스크롤 값에 기대지 않음)
+      let docTop = 0; for (let n = r; n; n = n.offsetParent) docTop += n.offsetTop;
+      const cur = window.pageYOffset || document.documentElement.scrollTop || 0;
+      const relTop = docTop - cur;
+      if (relTop < vh * 0.25 || relTop + r.offsetHeight > vh * 0.75) {
+        const maxTop = Math.max(0, document.documentElement.scrollHeight - vh);
+        const top = Math.min(maxTop, Math.max(0, docTop - (vh - r.offsetHeight) / 2));
+        window.scrollTo(0, top);   // 부드러운 스크롤 없이 바로 이동(iOS 홈 화면 앱 호환)
       }
     }
   }
@@ -1336,6 +1341,7 @@ details.setbox > .sets{padding-top:10px}
     $('#tab-test').setAttribute('aria-selected', t !== 'words');
     render();
   }
+  $('#appVer').textContent = '버전 ' + APP_VER;
   $('#exportBtn').onclick = exportBackup;
   // 홈 화면 웹앱엔 새로고침 버튼이 없어서 직접 제공. 주소에 매번 다른 값을 붙여 캐시된 예전 파일 대신 새 파일을 받는다
   $('#reloadBtn').onclick = () => { stopPlayer(); try { location.replace(location.pathname + '?v=' + Date.now()); } catch (e) { location.reload(); } };
