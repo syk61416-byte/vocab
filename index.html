@@ -38,6 +38,11 @@ html{overflow-y:scroll}
 .addday-row .kwlabel{font-size:13px;color:var(--muted);font-weight:600;flex:none}
 .addday-row input{flex:1;min-width:0;padding:7px 10px}
 .addday-row .btn{flex:none;white-space:nowrap}
+.chip.dchip{display:flex;align-items:center;gap:6px;cursor:default;padding:4px 10px 4px 4px;-webkit-user-select:none;user-select:none}
+.dchip .dhandle{width:34px;height:34px}
+.dchip .dname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dchip.dragging{border-color:var(--accent);background:var(--accent-soft);box-shadow:0 6px 18px color-mix(in srgb, #000 30%, transparent)}
+.daylist.dordering .dchip{justify-content:flex-start}
 .dayhdr{display:flex;align-items:center;gap:10px;width:100%;border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:10px;padding:10px 12px;cursor:pointer;font:inherit;text-align:left}
 .dayhdr .label{flex:none}
 .dayhdr .dpcur{flex:1;min-width:0;font-weight:700;font-size:15px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -99,7 +104,7 @@ button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-vis
 .dayname{font:700 20px var(--f-ui);border:1px solid transparent;background:none;color:var(--ink);padding:2px 6px;margin-left:-6px;border-radius:6px;width:12ch;min-width:0;flex:1 1 140px}
 .dayname:hover{border-color:var(--line)}
 .dayhead .spacer{flex:1}
-.addform{display:grid;grid-template-columns:1fr 1.4fr auto;gap:8px}
+.addform{display:grid;grid-template-columns:1fr 1.4fr auto;gap:8px;align-items:start}
 input[type=text],input[type=search],textarea{width:100%;min-width:0;border:1px solid var(--line);background:var(--bg);color:var(--ink);font:16px var(--f-ui);padding:9px 11px;border-radius:8px}
 textarea{min-height:130px;font-family:var(--f-num);font-size:16px;resize:vertical}
 .bulk{display:flex;flex-direction:column;gap:8px}
@@ -107,8 +112,9 @@ textarea{min-height:130px;font-family:var(--f-num);font-size:16px;resize:vertica
 .list{border-top:1px solid var(--line)}
 .row{display:grid;grid-template-columns:4.2em minmax(0,1fr) minmax(0,1.4fr) auto;gap:10px;align-items:center;padding:9px 0;border-bottom:1px solid var(--line)}
 .row .idx{color:var(--muted);font-size:12px}
-.row .w{font:600 18px var(--f-word);overflow-wrap:anywhere}
-.row .m{overflow-wrap:anywhere}
+.row .w{font:600 18px var(--f-word);overflow-wrap:anywhere;white-space:pre-line}
+textarea.grow{min-height:0;resize:none;overflow:hidden;font-family:var(--f-ui);line-height:1.45}
+.row .m{overflow-wrap:anywhere;white-space:pre-line}
 .row .acts{display:flex;gap:2px}
 .chk{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border:0;background:none;padding:0;cursor:pointer;border-radius:6px;flex:none}
 .chk .box{width:19px;height:19px;border:2px solid var(--muted);border-radius:5px;display:flex;align-items:center;justify-content:center;color:transparent;transition:background .12s,border-color .12s}
@@ -169,10 +175,10 @@ textarea{min-height:130px;font-family:var(--f-num);font-size:16px;resize:vertica
 .bar i{display:block;height:100%;background:var(--accent);transition:width .2s}
 .prompt{text-align:center;padding:26px 8px 18px;display:flex;flex-direction:column;gap:6px}
 .prompt .dir{font-size:12px;color:var(--muted)}
-.prompt .q{font:600 clamp(28px,7vw,42px)/1.2 var(--f-word);overflow-wrap:anywhere;text-wrap:balance}
+.prompt .q{font:600 clamp(28px,7vw,42px)/1.2 var(--f-word);overflow-wrap:anywhere;white-space:pre-line;text-wrap:balance}
 .prompt .q.ko{font:700 clamp(22px,5.5vw,30px)/1.35 var(--f-ui)}
 .opts{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.opt{display:flex;gap:10px;align-items:flex-start;text-align:left;border:1px solid var(--line);background:var(--surface);color:var(--ink);font:500 15px var(--f-ui);padding:12px;border-radius:8px;cursor:pointer;min-width:0;overflow-wrap:anywhere}
+.opt{white-space:pre-line;display:flex;gap:10px;align-items:flex-start;text-align:left;border:1px solid var(--line);background:var(--surface);color:var(--ink);font:500 15px var(--f-ui);padding:12px;border-radius:8px;cursor:pointer;min-width:0;overflow-wrap:anywhere}
 .opt .k{font:500 12px var(--f-num);color:var(--muted);padding-top:3px}
 .opt.en{font:600 17px var(--f-word)}
 .opt:hover:not(:disabled){border-color:var(--accent)}
@@ -307,7 +313,7 @@ details.setbox > .sets{padding-top:10px}
   .row .acts{grid-column:3;grid-row:1 / span 2}
   .row.editing{grid-template-columns:minmax(0,1fr);row-gap:8px;padding:12px 0}
   .row.editing > .idx{display:none}
-  .row.editing input{grid-column:1;grid-row:auto}
+  .row.editing input, .row.editing textarea{grid-column:1;grid-row:auto}
   .row.editing .acts{grid-column:1;grid-row:auto;justify-content:flex-end;gap:8px}
   .wronglist .row{grid-template-columns:2.1em minmax(0,1fr) auto}
   .wronglist .row .m{grid-column:2;grid-row:2}
@@ -389,7 +395,8 @@ details.setbox > .sets{padding-top:10px}
   let rangeOpen = (() => { try { const v = localStorage.getItem('vocab-range-open'); if (v !== null) return v === '1'; } catch (e) {} return !isNarrow(); })();
   const saveRangeOpen = () => { try { localStorage.setItem('vocab-range-open', rangeOpen ? '1' : '0'); } catch (e) {} };
   const rangeHdr = (id, names, open) => `<button class="dayhdr" id="${id}" type="button" aria-expanded="${open}"><span class="label">범위</span><span class="dpcur">${names.length ? esc(names.join(', ')) : '선택 안 함'}</span><span class="dpar">${open ? '접기' : (names.length > 1 ? `${names.length}개 · ` : '') + '목록 열기'}</span></button>`;
-  let ordering = false;             // 순서 바꾸기 모드
+  let ordering = false;
+  let dayOrdering = false;          // 목록(Day) 순서 바꾸기             // 순서 바꾸기 모드
   let editSnap = null;              // 리스트 편집 시작 시점의 단어 배열(취소용)
   function exitSelect() { selecting = false; picked.clear(); ordering = false; editSnap = null; }
   const GRIP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M5 8h14M5 12h14M5 16h14"/></svg>';
@@ -425,7 +432,7 @@ details.setbox > .sets{padding-top:10px}
 
   // ---------- storage (localStorage only) ----------
   // 저장 형식: localStorage['vocab-days-v1'] = JSON 문자열 { days:[...] } 
-  const APP_VER = '2026.11.15-follow3';
+  const APP_VER = '2026.11.16-textarea';
   const LKEY = 'vocab-days-v1', BKEY = 'vocab-last-backup';
   let storageOk = true;
 
@@ -434,13 +441,20 @@ details.setbox > .sets{padding-top:10px}
   const JUNK = /[\u0000-\u0008\u000A-\u001F\u007F-\u009F­​-‏‪-‮⁠-⁤﻿]/g;
   const clean = t => String(t ?? '').replace(/[\t  -   　]/g, ' ').replace(JUNK, '').replace(/ {2,}/g, ' ').trim();
   // 여러 줄 메모용: 줄은 살리고 각 줄만 정리
+  // 줄 수에 맞춰 높이가 늘어나는 입력칸
+  function autoGrow(root) {
+    root.querySelectorAll('textarea.grow').forEach(t => {
+      const fit = () => { t.style.height = 'auto'; t.style.height = t.scrollHeight + 'px'; };
+      fit(); requestAnimationFrame(fit); t.addEventListener('input', fit);
+    });
+  }
   const cleanNote = t => String(t ?? '').split(/\r?\n/).map(clean).join('\n').replace(/\n{3,}/g, '\n\n').trim();
   function cleanAll() {
     let n = 0;
     for (const d of days) {
       const nm = clean(d.name); if (nm && nm !== d.name) { d.name = nm; n++; }
       if (d.note) { const nt = cleanNote(d.note); if (nt !== d.note) { d.note = nt; n++; } }
-      for (const w of d.words || []) { const a = clean(w.w), b = clean(w.m); if (a !== w.w || b !== w.m) { w.w = a || w.w; w.m = b || w.m; n++; } }
+      for (const w of d.words || []) { const a = cleanNote(w.w), b = cleanNote(w.m); if (a !== w.w || b !== w.m) { w.w = a || w.w; w.m = b || w.m; n++; } }
     }
     return n;
   }
@@ -487,7 +501,7 @@ details.setbox > .sets{padding-top:10px}
     if (!Array.isArray(arr)) return null;
     return arr.filter(d => d && Array.isArray(d.words)).map((d, i) => ({
       id: String(d.id || uid('d')), name: clean(d.name) || `Day ${i + 1}`, order: Number(d.order) || i + 1, note: cleanNote(d.note),
-      words: d.words.filter(w => w && clean(w.w) && clean(w.m)).map(w => ({ id: String(w.id || uid('w')), w: clean(w.w), m: clean(w.m), checked: !!w.checked, focus: !!w.focus }))
+      words: d.words.filter(w => w && cleanNote(w.w) && cleanNote(w.m)).map(w => ({ id: String(w.id || uid('w')), w: cleanNote(w.w), m: cleanNote(w.m), checked: !!w.checked, focus: !!w.focus }))
     }));
   }
   function readImport(file) {
@@ -659,7 +673,7 @@ details.setbox > .sets{padding-top:10px}
     // 한글 뜻의 ~ 는 '뭐뭐'로 바꿔 읽는다(뒤 조사와 붙여서: ~에서 → 뭐뭐에서). 영어 쪽 ~ 는 건너뛴다
     const ko = /[\uAC00-\uD7A3]/.test(String(text));
     const t = String(text).replace(/[~～∼]\s*/g, ko && ttsOpt.tilde === 'say' ? '뭐뭐' : ' ').replace(/\s*\/\s*/g, ', ').replace(/\s{2,}/g, ' ').trim();
-    const parts = t.split(/\s*[,;，、]\s*/).map(x => x.trim()).filter(Boolean);
+    const parts = t.split(/\s*[,;，、\n]\s*/).map(x => x.trim()).filter(Boolean);
     return parts.length ? parts : [t];
   }
   let sTok = 0, keep = [];
@@ -874,20 +888,25 @@ details.setbox > .sets{padding-top:10px}
     if (!curDay || !days.find(d => d.id === curDay)) curDay = list[0].id;
     const day = days.find(d => d.id === curDay);
     const chipX = 0;
-    const chips = list.map(d => `<button class="chip" aria-pressed="${d.id === curDay}" data-day="${d.id}">${esc(d.name)} <span class="num">${d.words.length}</span></button>`).join('');
+    const chips = dayOrdering
+      ? list.map(d => `<div class="chip dchip" data-dord="${d.id}"><span class="handle dhandle" aria-hidden="true">${GRIP}</span><span class="dname">${esc(d.name)}</span></div>`).join('')
+      : list.map(d => `<button class="chip" aria-pressed="${d.id === curDay}" data-day="${d.id}">${esc(d.name)} <span class="num">${d.words.length}</span></button>`).join('');
     const rows = day.words.map((x, i) => editingWord === x.id
-      ? `<div class="row editing" data-w="${x.id}"><span class="idx num">${i + 1}</span><input type="text" id="ew-${x.id}" value="${esc(x.w)}" aria-label="단어"><input type="text" id="em-${x.id}" value="${esc(x.m)}" aria-label="뜻"><span class="acts"><button class="btn sm" data-cancel>취소</button><button class="btn sm primary" data-save="${x.id}">저장</button></span></div>`
+      ? `<div class="row editing" data-w="${x.id}"><span class="idx num">${i + 1}</span><textarea class="grow" rows="1" id="ew-${x.id}" aria-label="단어">${esc(x.w)}</textarea><textarea class="grow" rows="1" id="em-${x.id}" aria-label="뜻">${esc(x.m)}</textarea><span class="acts"><button class="btn sm" data-cancel>취소</button><button class="btn sm primary" data-save="${x.id}">저장</button></span></div>`
       : ordering
       ? `<div class="row ordrow editrow picking ${picked.has(x.id) ? 'picked' : ''}" data-w="${x.id}" data-ord="${x.id}" data-pickrow="${x.id}"><span class="eicons"><span class="handle" title="끌어서 옮기기" aria-hidden="true">${GRIP}</span><button type="button" class="selb" data-pick="${x.id}" aria-pressed="${picked.has(x.id)}" aria-label="${esc(x.w)} 선택"><span class="dot">${DOT}</span></button></span><span class="w">${esc(x.w)}</span><span class="m">${esc(x.m)}</span><span class="acts"><button class="btn sm" data-up="${x.id}" aria-label="${esc(x.w)} 위로" ${i ? '' : 'disabled'}>▲</button><button class="btn sm" data-down="${x.id}" aria-label="${esc(x.w)} 아래로" ${i < day.words.length - 1 ? '' : 'disabled'}>▼</button></span></div>`
       : `<div class="row" data-w="${x.id}">${marks(x.id, x.w)}<span class="w">${esc(x.w)}</span><span class="m">${esc(x.m)}</span><span class="acts">${TTS.ok ? `<button class="spk" data-say="${x.id}" aria-label="${esc(x.w)} 듣기" title="듣기">${SPK}</button>` : ''}<button class="ghost" data-edit="${x.id}">수정</button><button class="ghost" data-del="${x.id}">삭제</button></span></div>`).join('');
     app.innerHTML = `
       <div class="field daybar">
         <button class="dayhdr" id="dayPick" type="button" aria-expanded="${dayListOpen}"><span class="label">목록 ${list.length}개</span><span class="dpcur">${esc(day.name)}</span><span class="dpar">${dayListOpen ? '접기' : '목록 열기'}</span></button>
-        <div class="days daylist" id="dayChips" ${dayListOpen ? '' : 'hidden'}>${chips}</div>
-        ${dayListOpen ? `<div class="addday-row">
+        ${dayListOpen && dayOrdering ? '<div class="selhint">≡를 누른 채 끌어서 목록 순서를 바꿔요. 놓으면 바로 저장돼요.</div>' : ''}
+        <div class="days daylist ${dayOrdering ? 'dordering' : ''}" id="dayChips" ${dayListOpen ? '' : 'hidden'}>${chips}</div>
+        ${dayListOpen && dayOrdering ? `<div class="addday-row"><span class="sub" style="flex:1">목록 순서 바꾸는 중</span><button type="button" class="btn sm primary" id="dayOrdDone">완료</button></div>` : ''}
+        ${dayListOpen && !dayOrdering ? `<div class="addday-row">
           <label class="kwlabel" for="kwInput">키워드</label>
           <input type="text" id="kwInput" value="${esc(dayKeyword)}" placeholder="Day" aria-label="새 목록 키워드" autocapitalize="off">
           <button type="button" class="btn sm primary" id="addDay">+ <span id="kwPreview">${esc(nextNameFor(dayKeyword))}</span></button>
+          <button type="button" class="btn sm" id="dayOrdMode" ${list.length > 1 ? '' : 'disabled'}>순서</button>
         </div>` : ''}
       </div>
       <section class="panel">
@@ -910,8 +929,8 @@ details.setbox > .sets{padding-top:10px}
           <div class="addin">
             <span class="label">하나씩</span>
             <form class="addform" id="addform" autocomplete="off">
-              <input type="text" id="nw" placeholder="단어 (예: abundant)" aria-label="단어">
-              <input type="text" id="nm" placeholder="뜻 (예: 풍부한)" aria-label="뜻">
+              <textarea class="grow" id="nw" rows="1" placeholder="단어 (예: abundant)" aria-label="단어" autocapitalize="off"></textarea>
+              <textarea class="grow" id="nm" rows="1" placeholder="뜻 (예: 풍부한)" aria-label="뜻"></textarea>
               <button class="btn primary" type="submit">추가</button>
             </form>
             <span class="label">여러 개 한 번에</span>
@@ -928,6 +947,39 @@ details.setbox > .sets{padding-top:10px}
           <button class="btn sm primary" id="editDone" type="button">완료</button></div>` : ''}
       </section>`;
 
+    $('#dayOrdMode') && ($('#dayOrdMode').onclick = () => { stopPlayer(); exitSelect(); dayOrdering = true; render(); });
+    $('#dayOrdDone') && ($('#dayOrdDone').onclick = () => { dayOrdering = false; render(); toast('목록 순서를 저장했어요'); });
+    // 목록 끌기: 2열 격자라 포인터 아래에 있는 칸을 찾아 그 앞/뒤로 옮긴다
+    app.querySelectorAll('.dchip .dhandle').forEach(h => h.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      const chip = h.closest('.dchip'), grid = chip.parentElement;
+      chip.classList.add('dragging');
+      let lastX = e.clientX, lastY = e.clientY;
+      const place = () => {
+        chip.style.visibility = 'hidden';
+        const under = document.elementFromPoint(lastX, lastY);
+        chip.style.visibility = '';
+        const t = under && under.closest('.dchip');
+        if (!t || t === chip || t.parentElement !== grid) return;
+        const r = t.getBoundingClientRect();
+        const kids = [...grid.children], ci = kids.indexOf(chip), ti = kids.indexOf(t);
+        const after = ti > ci ? true : ti < ci ? false : (lastX > r.left + r.width / 2);
+        grid.insertBefore(chip, after ? t.nextSibling : t);
+      };
+      const timer = setInterval(() => { const v = lastY < 70 ? -14 : lastY > window.innerHeight - 70 ? 14 : 0; if (v) { window.scrollBy(0, v); place(); } }, 30);
+      const move = ev => { lastX = ev.clientX; lastY = ev.clientY; place(); };
+      const end = () => {
+        clearInterval(timer); chip.classList.remove('dragging');
+        window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', end); window.removeEventListener('pointercancel', end);
+        const ids = [...grid.querySelectorAll('[data-dord]')].map(c => c.dataset.dord);
+        let changed = false;
+        ids.forEach((id, k) => { const d = days.find(x => x.id === id); if (d && d.order !== k + 1) { d.order = k + 1; changed = true; } });
+        if (changed) saveLocal();
+        render();
+      };
+      // 칸이 DOM에서 옮겨지면 포인터 캡처가 풀리므로 창(window)에서 받는다
+      window.addEventListener('pointermove', move); window.addEventListener('pointerup', end); window.addEventListener('pointercancel', end);
+    }));
     app.querySelectorAll('[data-day]').forEach(b => b.onclick = () => { if (curDay !== b.dataset.day) stopPlayer(); curDay = b.dataset.day; editingWord = null; exitSelect(); if (isNarrow()) { dayListOpen = false; saveDayListOpen(); } render(); });
     $('#dayPick').onclick = () => { dayListOpen = !dayListOpen; saveDayListOpen(); render(); };
     // 키워드: 입력하는 대로 기억하고, 버튼에는 다음 이름을 미리 보여준다
@@ -989,7 +1041,7 @@ details.setbox > .sets{padding-top:10px}
       const move = ev => { lastY = ev.clientY; place(); };
       const end = () => {
         clearInterval(scrollTimer); row.classList.remove('dragging'); row.style.transform = '';
-        h.removeEventListener('pointermove', move); h.removeEventListener('pointerup', end); h.removeEventListener('pointercancel', end);
+        window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', end); window.removeEventListener('pointercancel', end);
         const ids = [...listEl.querySelectorAll('[data-ord]')].map(r => r.dataset.ord);
         const byId = new Map(day.words.map(w => [w.id, w]));
         const next = ids.map(id => byId.get(id)).filter(Boolean);
@@ -997,7 +1049,7 @@ details.setbox > .sets{padding-top:10px}
         render();
       };
       scrollTimer = setInterval(edge, 30);
-      h.addEventListener('pointermove', move); h.addEventListener('pointerup', end); h.addEventListener('pointercancel', end);
+      window.addEventListener('pointermove', move); window.addEventListener('pointerup', end); window.addEventListener('pointercancel', end);
     }));
     // 선택 모드: 줄 아무 곳이나 눌러도 선택/해제. 화면 전체를 다시 그리지 않고 표시만 바꾼다
     const paintSel = () => {
@@ -1016,11 +1068,12 @@ details.setbox > .sets{padding-top:10px}
     });
     $('#addform').onsubmit = e => {
       e.preventDefault();
-      const w = clean($('#nw').value), m = clean($('#nm').value);
+      const w = cleanNote($('#nw').value), m = cleanNote($('#nm').value);
       if (!w || !m) { toast('단어와 뜻을 모두 적어 주세요'); (w ? $('#nm') : $('#nw')).focus(); return; }
       day.words.push({ id: uid('w'), w, m }); saveDay(day); setStatus(); addOpen = true; saveAddOpen(); render(); $('#nw').focus();
     };
-    $('#nw').onkeydown = e => { if (e.key === 'Enter' && !$('#nm').value.trim()) { e.preventDefault(); $('#nm').focus(); } };
+    [$('#nw'), $('#nm')].forEach(t => t.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $('#addform').requestSubmit ? $('#addform').requestSubmit() : $('#addform').onsubmit(new Event('submit')); } }));
+    autoGrow(app);
     $('#addBox').addEventListener('toggle', e => { if (day.words.length) { addOpen = e.target.open; saveAddOpen(); } });
     $('#bulkAdd') && ($('#bulkAdd').onclick = () => {
       const items = parseBulk($('#bulkText').value);
@@ -1030,8 +1083,8 @@ details.setbox > .sets{padding-top:10px}
     app.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => { editingWord = b.dataset.edit; render(); $('#ew-' + editingWord)?.focus(); });
     app.querySelectorAll('[data-cancel]').forEach(b => b.onclick = () => { editingWord = null; render(); });
     app.querySelectorAll('[data-save]').forEach(b => {
-      const id = b.dataset.save, go = () => { const x = day.words.find(x => x.id === id); const w = clean($('#ew-' + id).value), m = clean($('#em-' + id).value); if (!w || !m) { toast('비워둘 수 없어요'); return; } x.w = w; x.m = m; editingWord = null; saveDay(day); render(); };
-      b.onclick = go; [$('#ew-' + id), $('#em-' + id)].forEach(i => i.onkeydown = e => { if (e.key === 'Enter') go(); if (e.key === 'Escape') { editingWord = null; render(); } });
+      const id = b.dataset.save, go = () => { const x = day.words.find(x => x.id === id); const w = cleanNote($('#ew-' + id).value), m = cleanNote($('#em-' + id).value); if (!w || !m) { toast('비워둘 수 없어요'); return; } x.w = w; x.m = m; editingWord = null; saveDay(day); render(); };
+      b.onclick = go; [$('#ew-' + id), $('#em-' + id)].forEach(i => i.onkeydown = e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); go(); } if (e.key === 'Escape') { editingWord = null; render(); } });
     });
     app.querySelectorAll('[data-del]').forEach(b => b.onclick = async () => {
       const x = day.words.find(x => x.id === b.dataset.del); if (!x) return;
@@ -1354,8 +1407,8 @@ details.setbox > .sets{padding-top:10px}
       ws.forEach((w, i) => {
         // 단어→뜻 세트를 srep번 반복. 반복 사이엔 간격 줄 1개, 다음 단어 전엔 설정한 간격만큼
         for (let r = 0; r < exportOpt.srep; r++) {
-          out.push((exportOpt.num && r === 0 ? `${i + 1}. ` : '') + withDot(w.w));
-          if (exportOpt.meaning) out.push(withDot(tildeText(w.m)));
+          out.push((exportOpt.num && r === 0 ? `${i + 1}. ` : '') + withDot(w.w.replace(/\n+/g, ', ')));
+          if (exportOpt.meaning) out.push(withDot(tildeText(w.m.replace(/\n+/g, ', '))));
           if (r < exportOpt.srep - 1) out.push(({ dot: '.', comma: ',' })[exportOpt.style] || '');
         }
         gapLines();
@@ -1456,7 +1509,7 @@ details.setbox > .sets{padding-top:10px}
 
   // ---------- tabs ----------
   function switchTab(t) {
-    stopPlayer(); cancelSpeech(); exitSelect();
+    stopPlayer(); cancelSpeech(); exitSelect(); dayOrdering = false;
     // 테스트로 갈 때 고른 범위가 없으면 지금 보던 목록을 범위로
     if (t !== 'words' && !setup.sel.size && curDay) setup.sel.add(curDay);
     view = t === 'words' ? 'words' : 'setup';
