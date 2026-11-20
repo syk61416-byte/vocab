@@ -447,7 +447,7 @@ details.setbox > .sets{padding-top:10px}
 
   // ---------- storage (localStorage only) ----------
   // 저장 형식: localStorage['vocab-days-v1'] = JSON 문자열 { days:[...] } 
-  const APP_VER = '2026.11.21-rateslider';
+  const APP_VER = '2026.11.21-voices';
   const LKEY = 'vocab-days-v1', BKEY = 'vocab-last-backup';
   let storageOk = true;
 
@@ -630,7 +630,8 @@ details.setbox > .sets{padding-top:10px}
   const langOf = t => /[\u3131-\u318E\uAC00-\uD7A3]/.test(t) ? 'ko-KR' : 'en-US';
   // macOS/iOS에 들어 있는 효과음성(장난용 목소리)은 기본 후보에서 뺀다
   const NOVELTY = /^(Albert|Bad News|Bahh|Bells|Boing|Bubbles|Cellos|Deranged|Good News|Hysterical|Jester|Junior|Organ|Pipe Organ|Princess|Ralph|Superstar|Trinoids|Whisper|Wobble|Zarvox|Fred|Kathy)\b/i;
-  const PREFER = { en: [/Samantha/i, /Ava/i, /Allison/i, /Susan/i, /Alex\b/i, /Daniel/i, /Karen/i, /Moira/i, /Google US English/i, /Google UK English Female/i, /Microsoft (Aria|Jenny|Zira)/i], ko: [/Yuna/i, /Sora/i, /Google 한국/i, /Microsoft (SunHi|Heami)/i] };
+  // 고음질(Premium/Enhanced) → 크롬 Google 음성 → 기본 Apple 음성 순으로 기본값을 고른다
+  const PREFER = { en: [/\(Premium\)/i, /\(Enhanced\)/i, /Microsoft .*Natural/i, /Google US English/i, /Samantha/i, /Ava/i, /Allison/i, /Susan/i, /Alex\b/i, /Daniel/i, /Karen/i, /Moira/i, /Google UK English Female/i, /Microsoft (Aria|Jenny|Zira)/i], ko: [/\(Premium\)/i, /\(Enhanced\)/i, /Yuna/i, /Sora/i, /Google 한국/i, /Microsoft (SunHi|Heami)/i] };
   ttsOpt.voice = ttsOpt.voice || {};
   const sameLang = (x, L) => x.lang && x.lang.replace('_', '-').toLowerCase().startsWith(L);
   function voicesFor(lang) {
