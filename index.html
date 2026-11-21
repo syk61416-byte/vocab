@@ -187,6 +187,9 @@ textarea.grow{min-height:0;resize:none;overflow:hidden;font-family:var(--f-ui);l
 .opt.dim{color:var(--muted)}
 .opt.dim .opair{opacity:.85}
 .fbslot{display:grid}
+.obadge{display:inline-block;margin-left:6px;font-size:13px;font-weight:700;line-height:1}
+.obadge.ck{color:var(--accent)}
+.obadge.st{color:var(--star)}
 .ratectl{display:flex;align-items:center;gap:8px;min-width:0}
 .ratectl input[type=range]{flex:1;min-width:0;accent-color:var(--accent);height:28px}
 .ratectl .btn{min-width:36px;font-size:18px;line-height:1;padding:4px 8px}
@@ -447,7 +450,7 @@ details.setbox > .sets{padding-top:10px}
 
   // ---------- storage (localStorage only) ----------
   // 저장 형식: localStorage['vocab-days-v1'] = JSON 문자열 { days:[...] } 
-  const APP_VER = '2026.11.21-voices';
+  const APP_VER = '2026.11.21-optbadges';
   const LKEY = 'vocab-days-v1', BKEY = 'vocab-last-backup';
   let storageOk = true;
 
@@ -1316,7 +1319,7 @@ details.setbox > .sets{padding-top:10px}
           // 보기마다 원래 단어를 함께 기억(오답을 골랐을 때 그 보기의 짝을 보여주려고)
           const pairs = shuffle([w, ...distract]);
           options = pairs.map(x => x[key]);
-          optSrc = pairs.map(x => ({ w: x.w, m: x.m }));
+          optSrc = pairs.map(x => ({ id: x.id, w: x.w, m: x.m }));
         }
         return { w, dir, options, optSrc, answer: null, correct: null };
       }),
@@ -1356,7 +1359,9 @@ details.setbox > .sets{padding-top:10px}
         if (answered && o === right) cls += ' right'; else if (answered && o === it.answer) cls += ' wrong'; else if (answered) cls += ' dim';
         // 모든 보기에 짝(영단어 또는 뜻) 줄을 처음부터 넣어 두고, 답하기 전엔 보이지 않게만 한다 → 답한 뒤에도 칸 크기가 그대로
         const src = it.optSrc && it.optSrc[k];
-        const pair = src ? `<span class="opair ${answered ? '' : 'veil'}" ${answered ? '' : 'aria-hidden="true"'}>${esc(it.dir === 'ko' ? src.m : src.w)}</span>` : '';
+        // 결과가 나오면 짝 옆에 그 단어의 체크(✓)·집중(★) 표시도 보여준다(저장된 최신 상태 기준)
+        const badges = answered && src && src.id ? `${isChecked(src.id) ? '<span class="obadge ck" title="체크">✓</span>' : ''}${isFocus(src.id) ? '<span class="obadge st" title="집중">★</span>' : ''}` : '';
+        const pair = src ? `<span class="opair ${answered ? '' : 'veil'}" ${answered ? '' : 'aria-hidden="true"'}>${esc(it.dir === 'ko' ? src.m : src.w)}${badges}</span>` : '';
         return `<button class="${cls}" data-o="${k}" ${answered ? 'disabled' : ''}><span class="k">${k + 1}</span><span class="otext"><span>${esc(o)}</span>${pair}</span></button>`;
       }).join('')}</div>`;
     } else {
@@ -1387,7 +1392,7 @@ details.setbox > .sets{padding-top:10px}
     if ($('#tf')) { $('#tf').onsubmit = e => { e.preventDefault(); const v = $('#ta').value.trim(); if (v) answer(v); }; if (!answered) $('#ta').focus(); }
     $('#qSay') && ($('#qSay').onclick = () => sayNow(q));
     // 화면을 다시 그리지 않고 체크만 바꾼다(입력 중인 답이 지워지지 않게)
-    bindChecks(app, () => { const ta = $('#ta'); if (ta && !ta.disabled) ta.focus(); else if (answered) $('#next').focus(); });
+    bindChecks(app, () => { const ta = $('#ta'); if (it.options && answered) { renderQuiz(); return; } if (ta && !ta.disabled) ta.focus(); else if (answered) $('#next').focus(); });
     $('#override') && ($('#override').onclick = () => { it.correct = true; render(); });
     $('#quit').onclick = () => { view = 'result'; quiz.items = quiz.items.filter(x => x.answer !== null); render(); };
     $('#prev').onclick = () => { if (quiz.i > 0) { quiz.i--; render(); } };
