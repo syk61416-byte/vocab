@@ -418,9 +418,9 @@ details.setbox > .sets{padding-top:10px}
   let editSnap = null;              // 리스트 편집 시작 시점의 단어 배열(취소용)
   function exitSelect() { selecting = false; picked.clear(); ordering = false; editSnap = null; }
   const GRIP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M5 8h14M5 12h14M5 16h14"/></svg>';
-  const setup = { sel: new Set(), dir: 'en', type: 'mc', count: 'all', nopt: '4', from: 'all', pick: 'rand' };
+  const setup = { sel: new Set(), dir: 'en', type: 'mc', count: 'all', nopt: '4', from: 'all', pick: 'rand', chunk: '0' };
   // 테스트 설정(범위 제외)은 다음에도 유지
-  try { const o = JSON.parse(localStorage.getItem('vocab-setup') || '{}'); ['dir', 'type', 'count', 'nopt', 'from', 'pick'].forEach(k => { if (typeof o[k] === 'string') setup[k] = o[k]; }); } catch (e) {}
+  try { const o = JSON.parse(localStorage.getItem('vocab-setup') || '{}'); ['dir', 'type', 'count', 'nopt', 'from', 'pick', 'chunk'].forEach(k => { if (typeof o[k] === 'string') setup[k] = o[k]; }); } catch (e) {}
   const saveSetup = () => { try { const { sel, ...rest } = setup; localStorage.setItem('vocab-setup', JSON.stringify(rest)); } catch (e) {} };
   let quiz = null;
 
@@ -450,7 +450,7 @@ details.setbox > .sets{padding-top:10px}
 
   // ---------- storage (localStorage only) ----------
   // 저장 형식: localStorage['vocab-days-v1'] = JSON 문자열 { days:[...] } 
-  const APP_VER = '2026.11.21-optbadges';
+  const APP_VER = '2026.11.24-chunktest';
   const LKEY = 'vocab-days-v1', BKEY = 'vocab-last-backup';
   let storageOk = true;
 
@@ -1165,13 +1165,14 @@ details.setbox > .sets{padding-top:10px}
         ${setup.type === 'mc' ? segRow('setup', 'nopt', '보기 수', setup.nopt, [['2', '2'], ['3', '3'], ['4', '4'], ['5', '5'], ['6', '6']]) : ''}
         ${setup.type === 'mc' ? segRow('setup', 'from', '보기 출처', setup.from, [['all', '모든 목록'], ['day', '같은 목록만']]) : ''}
         ${setup.type === 'mc' ? segRow('setup', 'pick', '오답 보기', setup.pick, [['rand', '무작위'], ['similar', '헷갈리게']]) : ''}
-        ${setup.type === 'recall' ? '' : segRow('setup', 'count', '문항 수', setup.count, [['all', '전체'], ['10', '10'], ['20', '20'], ['30', '30']])}
+        ${setup.type === 'recall' ? '' : segRow('setup', 'chunk', '구간 반복', setup.chunk, [['0', '끄기'], ['3', '3개'], ['5', '5개'], ['10', '10개'], ['20', '20개']])}
+        ${setup.type === 'recall' || +setup.chunk ? '' : segRow('setup', 'count', '문항 수', setup.count, [['all', '전체'], ['10', '10'], ['20', '20'], ['30', '30']])}
       </div>
       ${setup.type === 'mc' && setup.pick === 'similar' ? '<div class="hint">오답 보기를 정답과 철자가 비슷한 단어(affect·effect 등)나 뜻이 겹치는 단어 위주로 골라요.</div>' : ''}
       ${setup.type === 'mc' && setup.from === 'day' ? '<div class="hint">오답 보기를 문제 단어와 같은 목록에서만 뽑아요. 그 목록에 서로 다른 뜻이 2가지뿐이면 보기도 2개만 나와요.</div>' : ''}
       ${setup.type === 'recall' ? '<div class="hint">목록의 주제만 보고 그 목록의 영어 단어를 기억나는 대로 전부 적어요. 다 적으면 맞힌 것·놓친 것·목록에 없는 것을 채점해요.</div>' : ''}
       <div class="hint" id="dirHint" ${setup.type === 'recall' ? 'hidden' : ''}>${({ en: '영어 단어를 보고 뜻을 고릅니다.', ko: '뜻을 보고 영어 단어를 고릅니다.', mix: '두 방향이 무작위로 섞여 나옵니다.', listen: '단어를 숨기고, 스피커 버튼을 눌러 소리로 듣고 뜻을 고릅니다.' })[setup.dir]}</div>
-      <div class="setupfoot"><span class="sub">${pool.length ? (setup.type === 'recall' ? `단어 ${recallKeys(pool).length}개 떠올리기` : `${n}문제 · 순서는 매번 랜덤`) : emptyMsg}</span>
+      <div class="setupfoot"><span class="sub">${pool.length ? (setup.type === 'recall' ? `단어 ${recallKeys(pool).length}개 떠올리기` : +setup.chunk ? `${pool.length}단어 · ${setup.chunk}개씩 ${Math.ceil(pool.length / +setup.chunk)}구간 · 넘어가기 전까지 반복` : `${n}문제 · 순서는 매번 랜덤`) : emptyMsg}</span>
         <button class="btn primary" id="start" ${pool.length ? '' : 'disabled'}>시작</button></div>
     </section>`;
     app.querySelectorAll('[data-sel]').forEach(b => b.onclick = () => { const id = b.dataset.sel; setup.sel.has(id) ? setup.sel.delete(id) : setup.sel.add(id); render(); });
@@ -1180,7 +1181,7 @@ details.setbox > .sets{padding-top:10px}
     bindSegs($('#setupOpts'), (k, v) => {
       setup[k] = String(v); saveSetup(); render();
     });
-    $('#start').onclick = () => setup.type === 'recall' ? startRecall(poolFor(setup.sel)) : startQuiz(poolFor(setup.sel));
+    $('#start').onclick = () => setup.type === 'recall' ? startRecall(poolFor(setup.sel)) : +setup.chunk ? startChunkQuiz(poolFor(setup.sel)) : startQuiz(poolFor(setup.sel));
   }
 
   // ---------- 전부 써보기(회상 테스트) ----------
@@ -1293,9 +1294,9 @@ details.setbox > .sets{padding-top:10px}
   const wordSim = (x, y) => Math.max(engSim(x.w, y.w), korSim(x.m, y.m) * 0.9);
 
   // ---------- quiz ----------
-  function startQuiz(pool, limitAll) {
+  function startQuiz(pool, limitAll, chunk) {
     let items = shuffle(pool);
-    if (!limitAll && setup.count !== 'all') items = items.slice(0, +setup.count);
+    if (!limitAll && !chunk && setup.count !== 'all') items = items.slice(0, +setup.count);
     const all = days.flatMap(d => d.words);
     const byDay = new Map(days.map(d => [d.id, d.words]));
     const nDistract = Math.max(1, (+setup.nopt || 4) - 1);
@@ -1323,9 +1324,19 @@ details.setbox > .sets{padding-top:10px}
         }
         return { w, dir, options, optSrc, answer: null, correct: null };
       }),
-      i: 0, done: false, spoken: -1
+      i: 0, done: false, spoken: -1, chunk: chunk || null
     };
     view = 'quiz'; render();
+  }
+  // 구간 반복 테스트: 입력 순서대로 N개씩 끊고, 한 구간을 [다음 구간]을 누를 때까지 반복(매번 문제 순서·보기는 새로)
+  function startChunkQuiz(pool) {
+    const N = +setup.chunk, parts = [];
+    for (let k = 0; k < pool.length; k += N) parts.push(pool.slice(k, k + N));
+    runChunk({ parts, ci: 0, round: 1, best: [] });
+  }
+  function runChunk(ch, onlyWrong) {
+    const words = onlyWrong || ch.parts[ch.ci];
+    startQuiz(words, true, ch);
   }
   const norm = s => String(s).toLowerCase().replace(/\([^)]*\)/g, '').replace(/[\s.,;:!?'"’~\-·]/g, '');
   function gradeTyped(item, input) {
@@ -1342,7 +1353,7 @@ details.setbox > .sets{padding-top:10px}
   }
   function next() {
     if (quiz.i < quiz.items.length - 1) { quiz.i++; render(); }
-    else { view = 'result'; render(); }
+    else { view = quiz.chunk ? 'chunkres' : 'result'; render(); }
   }
   function renderQuiz() {
     const it = quiz.items[quiz.i], total = quiz.items.length, answered = it.answer !== null;
@@ -1382,7 +1393,7 @@ details.setbox > .sets{padding-top:10px}
     }
     app.innerHTML = `<section class="panel">
       ${(() => { const nt = days.find(d => d.id === it.w.dayId)?.note; return nt ? `<div class="qnote">${esc(nt)}</div>` : ''; })()}
-      <div class="qtop"><span class="num">${quiz.i + 1} / ${total}</span><span class="sub">${esc(it.w.day)}</span><span class="grow"></span><button type="button" class="qchk" data-chk="${it.w.id}" aria-pressed="${isChecked(it.w.id)}" title="이 단어 체크(숙지)"><span class="box">${CHK}</span>체크</button><button type="button" class="qchk qstar" data-star="${it.w.id}" aria-pressed="${isFocus(it.w.id)}" title="이 단어 집중"><span class="box">${STAR}</span>집중</button><button class="ghost" id="quit">그만하기</button></div>
+      <div class="qtop"><span class="num">${quiz.i + 1} / ${total}</span><span class="sub">${quiz.chunk ? `구간 ${quiz.chunk.ci + 1}/${quiz.chunk.parts.length} · ${quiz.chunk.round}회째` : esc(it.w.day)}</span><span class="grow"></span><button type="button" class="qchk" data-chk="${it.w.id}" aria-pressed="${isChecked(it.w.id)}" title="이 단어 체크(숙지)"><span class="box">${CHK}</span>체크</button><button type="button" class="qchk qstar" data-star="${it.w.id}" aria-pressed="${isFocus(it.w.id)}" title="이 단어 집중"><span class="box">${STAR}</span>집중</button><button class="ghost" id="quit">그만하기</button></div>
       <div class="bar"><i style="width:${(quiz.i + (answered ? 1 : 0)) / total * 100}%"></i></div>
       <div class="prompt"><span class="dir">${it.dir === 'ko' ? '영어 단어는?' : it.dir === 'listen' ? '듣고 뜻을 고르세요' : '뜻은?'}</span><span class="q ${it.dir === 'ko' ? 'ko' : ''}">${hideQ ? '· · ·' : esc(q)}</span>${TTS.ok ? `<button class="spk" id="qSay" aria-label="문제 듣기" title="듣기">${SPK}</button>` : ''}</div>
       ${body}${fb}
@@ -1394,7 +1405,7 @@ details.setbox > .sets{padding-top:10px}
     // 화면을 다시 그리지 않고 체크만 바꾼다(입력 중인 답이 지워지지 않게)
     bindChecks(app, () => { const ta = $('#ta'); if (it.options && answered) { renderQuiz(); return; } if (ta && !ta.disabled) ta.focus(); else if (answered) $('#next').focus(); });
     $('#override') && ($('#override').onclick = () => { it.correct = true; render(); });
-    $('#quit').onclick = () => { view = 'result'; quiz.items = quiz.items.filter(x => x.answer !== null); render(); };
+    $('#quit').onclick = () => { if (quiz.chunk) { quiz.chunk = null; view = 'setup'; render(); return; } view = 'result'; quiz.items = quiz.items.filter(x => x.answer !== null); render(); };
     $('#prev').onclick = () => { if (quiz.i > 0) { quiz.i--; render(); } };
     if (answered) $('#next').focus();
     $('#next').onclick = next;
@@ -1407,6 +1418,26 @@ details.setbox > .sets{padding-top:10px}
     if (it.options && it.answer === null && /^[1-6]$/.test(e.key) && document.activeElement?.tagName !== 'INPUT') { const o = it.options[+e.key - 1]; if (o !== undefined) answer(o); }
   });
 
+  function renderChunkResult() {
+    const ch = quiz.chunk, items = quiz.items, ok = items.filter(x => x.correct).length, wrong = items.filter(x => x.correct === false);
+    const last = ch.ci >= ch.parts.length - 1;
+    app.innerHTML = `<section class="panel">
+      <div class="chunkbar"><span class="num">구간 ${ch.ci + 1} / ${ch.parts.length} · ${ch.round}회째 끝</span></div>
+      <div class="score"><span class="big">${ok}</span><span class="of num">/ ${items.length}</span><span class="sub">${items.length ? Math.round(ok / items.length * 100) + '%' : ''}</span></div>
+      <div class="resbtns">
+        <button class="btn ${wrong.length ? '' : 'primary'}" id="chAgain">이 구간 다시</button>
+        ${wrong.length ? `<button class="btn primary" id="chWrong">틀린 ${wrong.length}개만 다시</button>` : ''}
+        <button class="btn" id="chNext">${last ? '끝내기' : '다음 구간 →'}</button>
+        ${ch.ci ? '<button class="btn" id="chPrev">← 이전 구간</button>' : ''}
+      </div>
+      <div class="field"><span class="label">이 구간 단어</span><div class="list wronglist">${ch.parts[ch.ci].map(w => { const x = items.find(i => i.w.id === w.id); const tag = x ? (x.correct ? '<span class="sub tag" style="color:var(--ok)">O</span>' : x.correct === false ? '<span class="sub tag" style="color:var(--bad)">X</span>' : '<span class="sub tag">-</span>') : '<span class="sub tag">-</span>'; return `<div class="row">${marks(w.id, w.w)}<span class="w">${esc(w.w)}</span><span class="m">${esc(w.m)}</span>${tag}</div>`; }).join('')}</div></div>
+    </section>`;
+    bindChecks(app);
+    $('#chAgain').onclick = () => { ch.round++; runChunk(ch); };
+    $('#chWrong') && ($('#chWrong').onclick = () => { ch.round++; runChunk(ch, wrong.map(x => x.w)); });
+    $('#chNext').onclick = () => { if (last) { quiz.chunk = null; view = 'setup'; render(); return; } ch.ci++; ch.round = 1; runChunk(ch); };
+    $('#chPrev') && ($('#chPrev').onclick = () => { ch.ci--; ch.round = 1; runChunk(ch); });
+  }
   function renderResult() {
     const items = quiz.items, ok = items.filter(x => x.correct).length, wrong = items.filter(x => x.correct === false);
     app.innerHTML = `<section class="panel">
@@ -1581,6 +1612,7 @@ details.setbox > .sets{padding-top:10px}
     else if (view === 'export') renderExport();
     else if (view === 'recall') renderRecall();
     else if (view === 'quiz') renderQuiz();
+    else if (view === 'chunkres') renderChunkResult();
     else renderResult();
     // 검색창: 단어장과 문제 풀이 화면에서 보임
     const showSearch = view === 'quiz' || view === 'words';
