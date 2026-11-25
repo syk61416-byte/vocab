@@ -187,6 +187,20 @@ textarea.grow{min-height:0;resize:none;overflow:hidden;font-family:var(--f-ui);l
 .opt.dim{color:var(--muted)}
 .opt.dim .opair{opacity:.85}
 .fbslot{display:grid}
+.wopen{cursor:pointer}
+.wopen:hover{color:var(--accent)}
+.exmark{display:inline-block;margin-left:6px;vertical-align:2px;font:700 10px var(--f-ui);color:var(--accent);border:1px solid var(--accent);border-radius:4px;padding:1px 4px}
+.wscard{width:min(520px,100%);max-height:85%;overflow:auto}
+#wsBody{display:flex;flex-direction:column;gap:12px}
+.wshead{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.wstitle{display:flex;flex-direction:column;gap:2px;min-width:0}
+.wstitle strong{font-size:22px;overflow-wrap:anywhere;white-space:pre-line}
+.wstitle span{color:var(--muted);overflow-wrap:anywhere;white-space:pre-line}
+.exlist{display:flex;flex-direction:column;gap:12px}
+.exitem{display:flex;flex-direction:column;gap:4px;border-left:3px solid var(--accent-soft);padding-left:10px}
+.exen{display:flex;align-items:flex-start;gap:6px;font-weight:600;font-size:16px;line-height:1.5}
+.exen span{flex:1;min-width:0;overflow-wrap:anywhere}
+.exko{color:var(--muted);font-size:14px;overflow-wrap:anywhere}
 .obadge{display:inline-block;margin-left:6px;font-size:13px;font-weight:700;line-height:1}
 .obadge.ck{color:var(--accent)}
 .obadge.st{color:var(--star)}
@@ -368,6 +382,12 @@ details.setbox > .sets{padding-top:10px}
     <span class="resbtns"><button class="btn sm" id="exportBtn">백업 파일 받기</button><button class="btn sm" id="importBtn" type="button">백업 불러오기</button><input type="file" id="importFile" class="vh" tabindex="-1" aria-hidden="true"><button class="btn sm" id="reloadBtn" type="button" title="최신 버전을 다시 받아옵니다. 단어는 그대로예요">새로 불러오기</button></span>
   </footer>
 </div>
+<div class="modal" id="wsheet" hidden role="dialog" aria-modal="true" aria-labelledby="wsWord">
+  <div class="mcard wscard">
+    <div class="wshead"><div class="wstitle"><strong id="wsWord"></strong><span id="wsMean"></span></div><button class="ghost" id="wsClose" type="button" aria-label="닫기">닫기</button></div>
+    <div id="wsBody"></div>
+  </div>
+</div>
 <div class="modal" id="modal" hidden role="dialog" aria-modal="true" aria-labelledby="mTitle">
   <div class="mcard"><strong id="mTitle"></strong><div class="mbody" id="mBody"></div>
     <div class="mbtns"><button class="btn" id="mCancel" type="button">취소</button><button class="btn danger-fill" id="mOk" type="button">삭제</button></div></div>
@@ -387,6 +407,41 @@ details.setbox > .sets{padding-top:10px}
   let selecting = false;           // 선택 삭제 모드
   const picked = new Set();        // 선택된 단어 id
   // 삭제 확인 모달: 결과를 Promise<boolean>으로 돌려준다
+  // 단어 상세: 예문 보기·편집
+  function openWordSheet(id) {
+    const f = findWord(id); if (!f) return;
+    const w = f.word, m = $('#wsheet'), vv = window.visualViewport;
+    const place = () => { if (!vv) return; Object.assign(m.style, { top: vv.offsetTop + 'px', left: vv.offsetLeft + 'px', width: vv.width + 'px', height: vv.height + 'px', right: 'auto', bottom: 'auto' }); };
+    const close = () => { if (vv) { vv.removeEventListener('resize', place); vv.removeEventListener('scroll', place); } m.hidden = true; document.removeEventListener('keydown', onKey, true); if (view === 'words') render(); };
+    const onKey = e => { if (e.key === 'Escape') { e.preventDefault(); close(); } };
+    $('#wsWord').textContent = w.w; $('#wsMean').textContent = w.m;
+    const show = () => {
+      const blocks = w.ex ? exBlocks(w.ex) : [];
+      $('#wsBody').innerHTML = `${blocks.length ? `<div class="exlist">${blocks.map((b, k) => `<div class="exitem"><div class="exen"><span>${esc(b[0])}</span>${TTS.ok ? `<button class="spk" data-exsay="${k}" aria-label="예문 듣기">${SPK}</button>` : ''}</div>${b.slice(1).map(l => `<div class="exko">${esc(l)}</div>`).join('')}</div>`).join('')}</div>`
+        : '<div class="hint">아직 예문이 없어요. [예문 편집]으로 직접 넣거나, 단어 추가 → 예문 한 번에 넣기로 붙여넣으세요.</div>'}
+        <div class="resbtns"><button class="btn sm" id="wsEdit" type="button">예문 편집</button></div>`;
+      $('#wsBody').querySelectorAll('[data-exsay]').forEach(b => b.onclick = () => sayNow(blocks[+b.dataset.exsay][0]));
+      $('#wsEdit').onclick = edit;
+    };
+    const edit = () => {
+      $('#wsBody').innerHTML = `<textarea class="grow" id="wsEx" rows="4" placeholder="She was reluctant to leave.
+그녀는 떠나기를 꺼렸다.
+
+(빈 줄로 예문을 구분해요)">${esc(w.ex || '')}</textarea>
+        <div class="hint">첫 줄은 영어 예문, 다음 줄은 해석. 예문끼리는 빈 줄로 구분해요.</div>
+        <div class="resbtns"><button class="btn sm" id="wsCancel" type="button">취소</button><button class="btn sm primary" id="wsSave" type="button">저장</button></div>`;
+      autoGrow($('#wsBody'));
+      const ta = $('#wsEx'); try { ta.focus({ preventScroll: true }); } catch (e) {}
+      $('#wsCancel').onclick = show;
+      $('#wsSave').onclick = () => { const v = cleanEx(ta.value); if (v) w.ex = v; else delete w.ex; saveDay(f.day); toast('예문을 저장했어요'); show(); };
+    };
+    show();
+    place(); if (vv) { vv.addEventListener('resize', place); vv.addEventListener('scroll', place); }
+    m.hidden = false;
+    document.addEventListener('keydown', onKey, true);
+    $('#wsClose').onclick = close;
+    m.onclick = e => { if (e.target === m) close(); };
+  }
   function confirmModal({ title, html, ok = '삭제' }) {
     return new Promise(resolve => {
       const m = $('#modal'), prevFocus = document.activeElement;
@@ -450,7 +505,7 @@ details.setbox > .sets{padding-top:10px}
 
   // ---------- storage (localStorage only) ----------
   // 저장 형식: localStorage['vocab-days-v1'] = JSON 문자열 { days:[...] } 
-  const APP_VER = '2026.11.24-chunktest';
+  const APP_VER = '2026.11.25-examples';
   const LKEY = 'vocab-days-v1', BKEY = 'vocab-last-backup';
   let storageOk = true;
 
@@ -467,12 +522,16 @@ details.setbox > .sets{padding-top:10px}
     });
   }
   const cleanNote = t => String(t ?? '').split(/\r?\n/).map(clean).join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  // 예문: 줄은 살리되 빈 줄은 하나로(예문 사이 구분용)
+  const cleanEx = t => String(t ?? '').split(/\r?\n/).map(clean).join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  // 예문 블록 = 빈 줄로 구분. 블록의 첫 줄은 영어 예문, 나머지는 해석
+  const exBlocks = t => cleanEx(t).split(/\n\s*\n/).map(b => b.split('\n').filter(Boolean)).filter(b => b.length);
   function cleanAll() {
     let n = 0;
     for (const d of days) {
       const nm = clean(d.name); if (nm && nm !== d.name) { d.name = nm; n++; }
       if (d.note) { const nt = cleanNote(d.note); if (nt !== d.note) { d.note = nt; n++; } }
-      for (const w of d.words || []) { const a = cleanNote(w.w), b = cleanNote(w.m); if (a !== w.w || b !== w.m) { w.w = a || w.w; w.m = b || w.m; n++; } }
+      for (const w of d.words || []) { const a = cleanNote(w.w), b = cleanNote(w.m); if (a !== w.w || b !== w.m) { w.w = a || w.w; w.m = b || w.m; n++; } if (w.ex) { const e = cleanEx(w.ex); if (e !== w.ex) { w.ex = e; n++; } } }
     }
     return n;
   }
@@ -519,7 +578,7 @@ details.setbox > .sets{padding-top:10px}
     if (!Array.isArray(arr)) return null;
     return arr.filter(d => d && Array.isArray(d.words)).map((d, i) => ({
       id: String(d.id || uid('d')), name: clean(d.name) || `Day ${i + 1}`, order: Number(d.order) || i + 1, note: cleanNote(d.note),
-      words: d.words.filter(w => w && cleanNote(w.w) && cleanNote(w.m)).map(w => ({ id: String(w.id || uid('w')), w: cleanNote(w.w), m: cleanNote(w.m), checked: !!w.checked, focus: !!w.focus }))
+      words: d.words.filter(w => w && cleanNote(w.w) && cleanNote(w.m)).map(w => ({ id: String(w.id || uid('w')), w: cleanNote(w.w), m: cleanNote(w.m), checked: !!w.checked, focus: !!w.focus, ...(w.ex ? { ex: cleanEx(w.ex) } : {}) }))
     }));
   }
   function readImport(file) {
@@ -543,7 +602,7 @@ details.setbox > .sets{padding-top:10px}
           const key = w => w.w.toLowerCase() + '\u0000' + w.m;
           const have = new Map(t.words.map(w => [key(w), w]));
           // 이미 있는 단어는 파일의 체크 상태를 따르고, 없는 단어는 추가
-          for (const w of d.words) { const ex = have.get(key(w)); if (ex) { ex.checked = !!w.checked; ex.focus = !!w.focus; } else t.words.push({ ...w, id: uid('w') }); }
+          for (const w of d.words) { const ex = have.get(key(w)); if (ex) { ex.checked = !!w.checked; ex.focus = !!w.focus; if (w.ex) ex.ex = w.ex; } else t.words.push({ ...w, id: uid('w') }); }
         }
         else days.push({ ...d, id: uid('d'), order: ++order });
       }
@@ -926,7 +985,7 @@ details.setbox > .sets{padding-top:10px}
       ? `<div class="row editing" data-w="${x.id}"><span class="idx num">${i + 1}</span><textarea class="grow" rows="1" id="ew-${x.id}" aria-label="단어">${esc(x.w)}</textarea><textarea class="grow" rows="1" id="em-${x.id}" aria-label="뜻">${esc(x.m)}</textarea><span class="acts"><button class="btn sm" data-cancel>취소</button><button class="btn sm primary" data-save="${x.id}">저장</button></span></div>`
       : ordering
       ? `<div class="row ordrow editrow picking ${picked.has(x.id) ? 'picked' : ''}" data-w="${x.id}" data-ord="${x.id}" data-pickrow="${x.id}"><span class="eicons"><span class="handle" title="끌어서 옮기기" aria-hidden="true">${GRIP}</span><button type="button" class="selb" data-pick="${x.id}" aria-pressed="${picked.has(x.id)}" aria-label="${esc(x.w)} 선택"><span class="dot">${DOT}</span></button></span><span class="w">${esc(x.w)}</span><span class="m">${esc(x.m)}</span><span class="acts"><button class="btn sm" data-up="${x.id}" aria-label="${esc(x.w)} 위로" ${i ? '' : 'disabled'}>▲</button><button class="btn sm" data-down="${x.id}" aria-label="${esc(x.w)} 아래로" ${i < day.words.length - 1 ? '' : 'disabled'}>▼</button></span></div>`
-      : `<div class="row" data-w="${x.id}">${marks(x.id, x.w)}<span class="w">${esc(x.w)}</span><span class="m">${esc(x.m)}</span><span class="acts">${TTS.ok ? `<button class="spk" data-say="${x.id}" aria-label="${esc(x.w)} 듣기" title="듣기">${SPK}</button>` : ''}<button class="ghost" data-edit="${x.id}">수정</button><button class="ghost" data-del="${x.id}">삭제</button></span></div>`).join('');
+      : `<div class="row" data-w="${x.id}">${marks(x.id, x.w)}<span class="w wopen" data-open="${x.id}">${esc(x.w)}${x.ex ? '<span class="exmark" title="예문 있음">예</span>' : ''}</span><span class="m">${esc(x.m)}</span><span class="acts">${TTS.ok ? `<button class="spk" data-say="${x.id}" aria-label="${esc(x.w)} 듣기" title="듣기">${SPK}</button>` : ''}<button class="ghost" data-edit="${x.id}">수정</button><button class="ghost" data-del="${x.id}">삭제</button></span></div>`).join('');
     app.innerHTML = `
       <div class="field daybar">
         <button class="dayhdr" id="dayPick" type="button" aria-expanded="${dayListOpen}"><span class="label">목록 ${list.length}개</span><span class="dpcur">${esc(day.name)}</span><span class="dpar">${dayListOpen ? '접기' : '목록 열기'}</span></button>
@@ -968,6 +1027,10 @@ details.setbox > .sets{padding-top:10px}
             <textarea id="bulkText" placeholder="abundant - 풍부한&#10;reluctant, 꺼리는&#10;inevitable	피할 수 없는"></textarea>
             <div class="hint">한 줄에 하나씩. 단어와 뜻은 탭, " - ", 쉼표, 콜론 중 하나로 구분하세요. 엑셀에서 두 칸을 복사해 붙여넣어도 됩니다.</div>
             <div><button class="btn" id="bulkAdd" type="button">붙여넣은 단어 추가</button></div>
+            <span class="label">예문 한 번에 넣기</span>
+            <textarea id="exBulk" placeholder="reluctant | She was reluctant to leave. | 그녀는 떠나기를 꺼렸다."></textarea>
+            <div class="hint">한 줄에 하나씩 "단어 | 영어 예문 | 해석". 이 목록의 같은 단어에 예문이 붙고, 이미 있으면 뒤에 추가돼요.</div>
+            <div><button class="btn" id="exBulkAdd" type="button">예문 넣기</button></div>
           </div>
         </details>
         <div class="list">${rows || `<div class="empty">이 Day에는 아직 단어가 없어요. 위에서 추가하세요.</div>`}</div>
@@ -1106,6 +1169,22 @@ details.setbox > .sets{padding-top:10px}
     [$('#nw'), $('#nm')].forEach(t => t.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); $('#addform').requestSubmit ? $('#addform').requestSubmit() : $('#addform').onsubmit(new Event('submit')); } }));
     autoGrow(app);
     $('#addBox').addEventListener('toggle', e => { if (day.words.length) { addOpen = e.target.open; saveAddOpen(); } });
+    $('#exBulkAdd') && ($('#exBulkAdd').onclick = () => {
+      const lines = $('#exBulk').value.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+      const key = t => headOf(t).toLowerCase() || clean(t).toLowerCase();
+      let ok = 0; const miss = [];
+      for (const l of lines) {
+        const parts = l.split('|').map(x => clean(x));
+        if (parts.length < 2 || !parts[0] || !parts[1]) { miss.push(l); continue; }
+        const k = key(parts[0]);
+        const w = day.words.find(x => clean(x.w).toLowerCase() === parts[0].toLowerCase()) || day.words.find(x => key(x.w) === k);
+        if (!w) { miss.push(parts[0]); continue; }
+        const block = [parts[1], ...parts.slice(2).filter(Boolean)].join('\n');
+        w.ex = w.ex ? cleanEx(w.ex + '\n\n' + block) : block; ok++;
+      }
+      if (ok) { saveDay(day); render(); }
+      toast(ok ? `예문 ${ok}개 넣었어요${miss.length ? ` · 못 찾음 ${miss.length}개: ${miss.slice(0, 3).join(', ')}` : ''}` : '맞는 단어를 찾지 못했어요. "단어 | 예문 | 해석" 형식인지 확인해 주세요');
+    });
     $('#bulkAdd') && ($('#bulkAdd').onclick = () => {
       const items = parseBulk($('#bulkText').value);
       if (!items.length) { toast('인식된 줄이 없어요. "단어 - 뜻" 형식인지 확인해 주세요'); return; }
@@ -1123,6 +1202,7 @@ details.setbox > .sets{padding-top:10px}
       if (!ok) return;
       day.words = day.words.filter(w => w.id !== x.id); saveDay(day); setStatus(); render(); toast(`"${x.w}" 삭제됨`);
     });
+    app.querySelectorAll('[data-open]').forEach(el => el.onclick = () => openWordSheet(el.dataset.open));
     app.querySelectorAll('[data-say]').forEach(b => b.onclick = () => { const x = day.words.find(x => x.id === b.dataset.say); if (x) sayNow(x.w, () => { if (ttsOpt.meaning) setTimeout(() => say(x.m), 350); }); });
     bindChecks(app, () => { const el = $('#dayCount'); if (el) el.textContent = dayCountText(day); if (!player) paintPlayer(); });
     paintPlayer(); paintVoices();
