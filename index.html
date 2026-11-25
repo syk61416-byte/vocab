@@ -190,12 +190,14 @@ textarea.grow{min-height:0;resize:none;overflow:hidden;font-family:var(--f-ui);l
 .wopen{cursor:pointer}
 .wopen:hover{color:var(--accent)}
 .exmark{display:inline-block;margin-left:6px;vertical-align:2px;font:700 10px var(--f-ui);color:var(--accent);border:1px solid var(--accent);border-radius:4px;padding:1px 4px}
-.wscard{width:min(520px,100%);max-height:85%;overflow:auto}
-#wsBody{display:flex;flex-direction:column;gap:12px}
-.wshead{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
-.wstitle{display:flex;flex-direction:column;gap:2px;min-width:0}
-.wstitle strong{font-size:22px;overflow-wrap:anywhere;white-space:pre-line}
-.wstitle span{color:var(--muted);overflow-wrap:anywhere;white-space:pre-line}
+.expanel{border-bottom:1px solid var(--line);background:var(--bg)}
+.exinner{display:flex;flex-direction:column;gap:10px;padding:10px 0 12px calc(4.2em + 10px)}
+.exbtns{display:flex;justify-content:flex-end;gap:8px}
+.qex{display:flex;flex-direction:column;align-items:center;gap:8px;margin:-6px 0 14px}
+.qex .exitem{text-align:left}
+.qexbody{display:flex;flex-direction:column;gap:10px;width:100%;background:var(--bg);border-radius:8px;padding:10px 12px}
+.qblank{color:var(--accent);font-weight:700;letter-spacing:1px}
+.wopen[aria-expanded="true"]{color:var(--accent)}
 .exlist{display:flex;flex-direction:column;gap:12px}
 .exitem{display:flex;flex-direction:column;gap:4px;border-left:3px solid var(--accent-soft);padding-left:10px}
 .exen{display:flex;align-items:flex-start;gap:6px;font-weight:600;font-size:16px;line-height:1.5}
@@ -343,6 +345,7 @@ details.setbox > .sets{padding-top:10px}
   .row > .marks{flex-direction:column}
   .row .m{grid-column:2;grid-row:2}
   .row .acts{grid-column:3;grid-row:1 / span 2}
+  .exinner{padding-left:calc(2.1em + 10px)}
   .row.editing{grid-template-columns:minmax(0,1fr);row-gap:8px;padding:12px 0}
   .row.editing > .idx{display:none}
   .row.editing input, .row.editing textarea{grid-column:1;grid-row:auto}
@@ -382,12 +385,6 @@ details.setbox > .sets{padding-top:10px}
     <span class="resbtns"><button class="btn sm" id="exportBtn">백업 파일 받기</button><button class="btn sm" id="importBtn" type="button">백업 불러오기</button><input type="file" id="importFile" class="vh" tabindex="-1" aria-hidden="true"><button class="btn sm" id="reloadBtn" type="button" title="최신 버전을 다시 받아옵니다. 단어는 그대로예요">새로 불러오기</button></span>
   </footer>
 </div>
-<div class="modal" id="wsheet" hidden role="dialog" aria-modal="true" aria-labelledby="wsWord">
-  <div class="mcard wscard">
-    <div class="wshead"><div class="wstitle"><strong id="wsWord"></strong><span id="wsMean"></span></div><button class="ghost" id="wsClose" type="button" aria-label="닫기">닫기</button></div>
-    <div id="wsBody"></div>
-  </div>
-</div>
 <div class="modal" id="modal" hidden role="dialog" aria-modal="true" aria-labelledby="mTitle">
   <div class="mcard"><strong id="mTitle"></strong><div class="mbody" id="mBody"></div>
     <div class="mbtns"><button class="btn" id="mCancel" type="button">취소</button><button class="btn danger-fill" id="mOk" type="button">삭제</button></div></div>
@@ -407,41 +404,73 @@ details.setbox > .sets{padding-top:10px}
   let selecting = false;           // 선택 삭제 모드
   const picked = new Set();        // 선택된 단어 id
   // 삭제 확인 모달: 결과를 Promise<boolean>으로 돌려준다
-  // 단어 상세: 예문 보기·편집
-  function openWordSheet(id) {
-    const f = findWord(id); if (!f) return;
-    const w = f.word, m = $('#wsheet'), vv = window.visualViewport;
-    const place = () => { if (!vv) return; Object.assign(m.style, { top: vv.offsetTop + 'px', left: vv.offsetLeft + 'px', width: vv.width + 'px', height: vv.height + 'px', right: 'auto', bottom: 'auto' }); };
-    const close = () => { if (vv) { vv.removeEventListener('resize', place); vv.removeEventListener('scroll', place); } m.hidden = true; document.removeEventListener('keydown', onKey, true); if (view === 'words') render(); };
-    const onKey = e => { if (e.key === 'Escape') { e.preventDefault(); close(); } };
-    $('#wsWord').textContent = w.w; $('#wsMean').textContent = w.m;
-    const show = () => {
+  // 단어 아래 펼침 패널: 예문 보기·편집. 단어를 다시 누르거나 다른 곳을 누르면 접힌다
+  let exOpen = null, exEditing = false;
+  const EXMARK = '<span class="exmark" title="예문 있음">예</span>';
+  const EX_MS = 220;
+  // 높이를 0 ↔ 실제 높이로 옮겨 부드럽게 펼치고 접는다(움직임 줄이기 설정이면 즉시)
+  function exAnimOpen(p) {
+    Object.assign(p.style, { height: '0px', opacity: '0', overflow: 'hidden' });
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      if (!p.isConnected) return;
+      Object.assign(p.style, { transition: `height ${EX_MS}ms ease, opacity ${EX_MS}ms ease`, height: p.scrollHeight + 'px', opacity: '1' });
+    }));
+    setTimeout(() => { if (p.isConnected && !p.classList.contains('closing')) Object.assign(p.style, { height: '', opacity: '', overflow: '', transition: '' }); }, EX_MS + 60);
+  }
+  function exAnimClose(p) {
+    if (p.classList.contains('closing')) return; p.classList.add('closing');
+    Object.assign(p.style, { transition: '', height: p.offsetHeight + 'px', overflow: 'hidden' });
+    void p.offsetHeight;
+    Object.assign(p.style, { transition: `height ${EX_MS}ms ease, opacity ${EX_MS}ms ease`, height: '0px', opacity: '0' });
+    setTimeout(() => p.remove(), EX_MS + 60);
+  }
+  function closeEx() {
+    document.querySelectorAll('.expanel:not(.closing)').forEach(exAnimClose);
+    document.querySelectorAll('.wopen[aria-expanded="true"]').forEach(e => e.setAttribute('aria-expanded', 'false'));
+    exOpen = null; exEditing = false;
+  }
+  function mountEx(id, anim) {
+    const row = app.querySelector(`.list .row[data-w="${id}"]`), wo = row && row.querySelector('.wopen');
+    if (!wo) { exOpen = null; exEditing = false; return; }
+    exOpen = id; wo.setAttribute('aria-expanded', 'true');
+    const p = document.createElement('div'); p.className = 'expanel'; p.dataset.expanel = id; p.innerHTML = '<div class="exinner"></div>'; row.after(p);
+    fillEx(p, id, false);
+    if (anim) exAnimOpen(p);
+  }
+  function toggleEx(id) { const was = exOpen === id; closeEx(); if (!was) mountEx(id, true); }
+  function fillEx(p, id, editing) {
+    const f = findWord(id); if (!f) { closeEx(); return; }
+    const w = f.word; exEditing = editing; const box = p.firstElementChild;
+    if (!editing) {
       const blocks = w.ex ? exBlocks(w.ex) : [];
-      $('#wsBody').innerHTML = `${blocks.length ? `<div class="exlist">${blocks.map((b, k) => `<div class="exitem"><div class="exen"><span>${esc(b[0])}</span>${TTS.ok ? `<button class="spk" data-exsay="${k}" aria-label="예문 듣기">${SPK}</button>` : ''}</div>${b.slice(1).map(l => `<div class="exko">${esc(l)}</div>`).join('')}</div>`).join('')}</div>`
-        : '<div class="hint">아직 예문이 없어요. [예문 편집]으로 직접 넣거나, 단어 추가 → 예문 한 번에 넣기로 붙여넣으세요.</div>'}
-        <div class="resbtns"><button class="btn sm" id="wsEdit" type="button">예문 편집</button></div>`;
-      $('#wsBody').querySelectorAll('[data-exsay]').forEach(b => b.onclick = () => sayNow(blocks[+b.dataset.exsay][0]));
-      $('#wsEdit').onclick = edit;
-    };
-    const edit = () => {
-      $('#wsBody').innerHTML = `<textarea class="grow" id="wsEx" rows="4" placeholder="She was reluctant to leave.
+      box.innerHTML = `${blocks.length ? `<div class="exlist">${blocks.map((b, k) => `<div class="exitem"><div class="exen"><span>${esc(b[0])}</span>${TTS.ok ? `<button class="spk" data-exsay="${k}" aria-label="예문 듣기">${SPK}</button>` : ''}</div>${b.slice(1).map(l => `<div class="exko">${esc(l)}</div>`).join('')}</div>`).join('')}</div>`
+        : '<div class="hint">아직 예문이 없어요. [예문 편집]으로 넣을 수 있어요.</div>'}
+        <div class="exbtns"><button class="ghost" data-exedit type="button">예문 편집</button></div>`;
+      box.querySelectorAll('[data-exsay]').forEach(b => b.onclick = () => sayNow(blocks[+b.dataset.exsay][0]));
+      box.querySelector('[data-exedit]').onclick = () => fillEx(p, id, true);
+      return;
+    }
+    box.innerHTML = `<textarea class="grow" rows="3" placeholder="She was reluctant to leave.
 그녀는 떠나기를 꺼렸다.
 
 (빈 줄로 예문을 구분해요)">${esc(w.ex || '')}</textarea>
-        <div class="hint">첫 줄은 영어 예문, 다음 줄은 해석. 예문끼리는 빈 줄로 구분해요.</div>
-        <div class="resbtns"><button class="btn sm" id="wsCancel" type="button">취소</button><button class="btn sm primary" id="wsSave" type="button">저장</button></div>`;
-      autoGrow($('#wsBody'));
-      const ta = $('#wsEx'); try { ta.focus({ preventScroll: true }); } catch (e) {}
-      $('#wsCancel').onclick = show;
-      $('#wsSave').onclick = () => { const v = cleanEx(ta.value); if (v) w.ex = v; else delete w.ex; saveDay(f.day); toast('예문을 저장했어요'); show(); };
+      <div class="hint">첫 줄은 영어 예문, 다음 줄은 해석. 예문끼리는 빈 줄로 구분해요.</div>
+      <div class="exbtns"><button class="btn sm" data-excancel type="button">취소</button><button class="btn sm primary" data-exsave type="button">저장</button></div>`;
+    autoGrow(box);
+    const ta = box.querySelector('textarea'); try { ta.focus({ preventScroll: true }); } catch (e) {}
+    box.querySelector('[data-excancel]').onclick = () => fillEx(p, id, false);
+    box.querySelector('[data-exsave]').onclick = () => {
+      const v = cleanEx(ta.value); if (v) w.ex = v; else delete w.ex; saveDay(f.day); toast('예문을 저장했어요');
+      const wo = app.querySelector(`.list .row[data-w="${id}"] .wopen`); if (wo) wo.innerHTML = esc(w.w) + (w.ex ? EXMARK : '');
+      fillEx(p, id, false);
     };
-    show();
-    place(); if (vv) { vv.addEventListener('resize', place); vv.addEventListener('scroll', place); }
-    m.hidden = false;
-    document.addEventListener('keydown', onKey, true);
-    $('#wsClose').onclick = close;
-    m.onclick = e => { if (e.target === m) close(); };
   }
+  // 다른 곳을 누르면 접기(편집 중일 땐 취소·저장으로만 닫음)
+  document.addEventListener('click', e => {
+    if (!exOpen || exEditing) return;
+    const t = e.target; if (!t || !document.contains(t)) return; if (t.closest && (t.closest('.expanel') || t.closest('[data-open]'))) return;
+    closeEx();
+  });
   function confirmModal({ title, html, ok = '삭제' }) {
     return new Promise(resolve => {
       const m = $('#modal'), prevFocus = document.activeElement;
@@ -505,7 +534,7 @@ details.setbox > .sets{padding-top:10px}
 
   // ---------- storage (localStorage only) ----------
   // 저장 형식: localStorage['vocab-days-v1'] = JSON 문자열 { days:[...] } 
-  const APP_VER = '2026.11.25-examples';
+  const APP_VER = '2026.11.26-quizex';
   const LKEY = 'vocab-days-v1', BKEY = 'vocab-last-backup';
   let storageOk = true;
 
@@ -985,7 +1014,7 @@ details.setbox > .sets{padding-top:10px}
       ? `<div class="row editing" data-w="${x.id}"><span class="idx num">${i + 1}</span><textarea class="grow" rows="1" id="ew-${x.id}" aria-label="단어">${esc(x.w)}</textarea><textarea class="grow" rows="1" id="em-${x.id}" aria-label="뜻">${esc(x.m)}</textarea><span class="acts"><button class="btn sm" data-cancel>취소</button><button class="btn sm primary" data-save="${x.id}">저장</button></span></div>`
       : ordering
       ? `<div class="row ordrow editrow picking ${picked.has(x.id) ? 'picked' : ''}" data-w="${x.id}" data-ord="${x.id}" data-pickrow="${x.id}"><span class="eicons"><span class="handle" title="끌어서 옮기기" aria-hidden="true">${GRIP}</span><button type="button" class="selb" data-pick="${x.id}" aria-pressed="${picked.has(x.id)}" aria-label="${esc(x.w)} 선택"><span class="dot">${DOT}</span></button></span><span class="w">${esc(x.w)}</span><span class="m">${esc(x.m)}</span><span class="acts"><button class="btn sm" data-up="${x.id}" aria-label="${esc(x.w)} 위로" ${i ? '' : 'disabled'}>▲</button><button class="btn sm" data-down="${x.id}" aria-label="${esc(x.w)} 아래로" ${i < day.words.length - 1 ? '' : 'disabled'}>▼</button></span></div>`
-      : `<div class="row" data-w="${x.id}">${marks(x.id, x.w)}<span class="w wopen" data-open="${x.id}">${esc(x.w)}${x.ex ? '<span class="exmark" title="예문 있음">예</span>' : ''}</span><span class="m">${esc(x.m)}</span><span class="acts">${TTS.ok ? `<button class="spk" data-say="${x.id}" aria-label="${esc(x.w)} 듣기" title="듣기">${SPK}</button>` : ''}<button class="ghost" data-edit="${x.id}">수정</button><button class="ghost" data-del="${x.id}">삭제</button></span></div>`).join('');
+      : `<div class="row" data-w="${x.id}">${marks(x.id, x.w)}<span class="w wopen" data-open="${x.id}" role="button" aria-expanded="false">${esc(x.w)}${x.ex ? EXMARK : ''}</span><span class="m">${esc(x.m)}</span><span class="acts">${TTS.ok ? `<button class="spk" data-say="${x.id}" aria-label="${esc(x.w)} 듣기" title="듣기">${SPK}</button>` : ''}<button class="ghost" data-edit="${x.id}">수정</button><button class="ghost" data-del="${x.id}">삭제</button></span></div>`).join('');
     app.innerHTML = `
       <div class="field daybar">
         <button class="dayhdr" id="dayPick" type="button" aria-expanded="${dayListOpen}"><span class="label">목록 ${list.length}개</span><span class="dpcur">${esc(day.name)}</span><span class="dpar">${dayListOpen ? '접기' : '목록 열기'}</span></button>
@@ -1202,7 +1231,8 @@ details.setbox > .sets{padding-top:10px}
       if (!ok) return;
       day.words = day.words.filter(w => w.id !== x.id); saveDay(day); setStatus(); render(); toast(`"${x.w}" 삭제됨`);
     });
-    app.querySelectorAll('[data-open]').forEach(el => el.onclick = () => openWordSheet(el.dataset.open));
+    app.querySelectorAll('[data-open]').forEach(el => el.onclick = () => toggleEx(el.dataset.open));
+    if (exOpen) { const id = exOpen; exOpen = null; exEditing = false; mountEx(id, false); }
     app.querySelectorAll('[data-say]').forEach(b => b.onclick = () => { const x = day.words.find(x => x.id === b.dataset.say); if (x) sayNow(x.w, () => { if (ttsOpt.meaning) setTimeout(() => say(x.m), 350); }); });
     bindChecks(app, () => { const el = $('#dayCount'); if (el) el.textContent = dayCountText(day); if (!player) paintPlayer(); });
     paintPlayer(); paintVoices();
@@ -1435,6 +1465,27 @@ details.setbox > .sets{padding-top:10px}
     if (quiz.i < quiz.items.length - 1) { quiz.i++; render(); }
     else { view = quiz.chunk ? 'chunkres' : 'result'; render(); }
   }
+  // 테스트 중 예문: 답하기 전엔 영어 원문만, 채점 후 해석까지. 펼침 상태는 기기별로 기억
+  let quizExOpen = (() => { try { return localStorage.getItem('vocab-quiz-ex') === '1'; } catch (e) { return false; } })();
+  const EX_STOP = new Set(['a', 'an', 'the', 'to', 'of', 'in', 'on', 'at', 'for', 'with', 'by', 'up', 'be', 'is', 'are', 'and', 'or', 'from', 'into', 'out', 'off', 'over', 'as', 'one', "one's", 'sb', 'sth', 'it', 'than', 'that', 'is']);
+  // 문제가 '뜻→단어'일 때 예문 속 정답 단어(변화형 포함)를 ____로 가린다
+  // 불규칙 동사 과거·과거분사(합성어 withdraw→withdrew, undergo→underwent 등도 끝부분으로 처리)
+  const EX_IRR = { draw: 'drew drawn', hold: 'held', take: 'took taken', come: 'came', go: 'went gone', give: 'gave given', build: 'built', pay: 'paid', lay: 'laid', bring: 'brought', lead: 'led', run: 'ran', stride: 'strode stridden', make: 'made', get: 'got gotten', put: 'put', set: 'set', keep: 'kept', leave: 'left', find: 'found', think: 'thought', buy: 'bought', catch: 'caught', teach: 'taught', seek: 'sought', fight: 'fought', break: 'broke broken', speak: 'spoke spoken', write: 'wrote written', rise: 'rose risen', drive: 'drove driven', fall: 'fell fallen', see: 'saw seen', know: 'knew known', grow: 'grew grown', throw: 'threw thrown', fly: 'flew flown', bear: 'bore borne born', tear: 'tore torn', wear: 'wore worn', swear: 'swore sworn', stand: 'stood', sell: 'sold', tell: 'told', feel: 'felt', meet: 'met', send: 'sent', spend: 'spent', lend: 'lent', bend: 'bent', hit: 'hit', cut: 'cut', shut: 'shut', let: 'let', strike: 'struck', stick: 'stuck', hang: 'hung', win: 'won', dig: 'dug', sink: 'sank sunk', begin: 'began begun', forbid: 'forbade forbidden', forgive: 'forgave forgiven', shake: 'shook shaken', wake: 'woke woken', choose: 'chose chosen', freeze: 'froze frozen', steal: 'stole stolen', hide: 'hid hidden', bite: 'bit bitten', ride: 'rode ridden', eat: 'ate eaten', lie: 'lay lain', slide: 'slid', mislead: 'misled', feed: 'fed', flee: 'fled', deal: 'dealt', mean: 'meant', lose: 'lost', sit: 'sat', spin: 'spun', swing: 'swung', weep: 'wept', sweep: 'swept', sleep: 'slept' };
+  function maskEx(sent, word) {
+    const toks = (word.split(/[\n(]/)[0].toLowerCase().match(/[a-z][a-z'-]*/g) || []).filter(t => t.length > 1 && !EX_STOP.has(t));
+    const q = t => t.replace(/[-']/g, m => '\\' + m);
+    let out = sent;
+    for (const t of toks) {
+      const pats = [];
+      if (t.length <= 4) {
+        pats.push(`${q(t)}${t.slice(-1)}?(?:s|es|ed|d|ing|er|ers|y)?`);
+        if (/[^aeiou]y$/.test(t)) pats.push(`${q(t.slice(0, -1))}i(?:es|ed|er|est)`);
+      } else pats.push(`${q(t.replace(/(e|y)$/, ''))}[a-z]*`);
+      for (const base in EX_IRR) if (t.endsWith(base)) { const pre = t.slice(0, t.length - base.length); EX_IRR[base].split(' ').forEach(f => pats.push(q(pre + f))); }
+      out = out.replace(new RegExp(`\\b(?:${pats.join('|')})\\b`, 'gi'), '\u0001');
+    }
+    return esc(out).replace(/\u0001/g, '<span class="qblank">____</span>');
+  }
   function renderQuiz() {
     const it = quiz.items[quiz.i], total = quiz.items.length, answered = it.answer !== null;
     const right = it.dir === 'ko' ? it.w.w : it.w.m;
@@ -1471,17 +1522,22 @@ details.setbox > .sets{padding-top:10px}
         : `<div class="fb no"><span><b>오답</b> <span class="ans">정답: ${esc(right)}</span></span><button class="btn sm" id="override">맞은 걸로 처리</button></div>`;
       fb = `<div class="fbslot">${ghost}${real}</div>`;
     }
+    const exw = findWord(it.w.id)?.word, exb = exw && exw.ex ? exBlocks(exw.ex) : [];
+    const exHide = !answered && (it.dir === 'ko' || it.dir === 'listen');
+    const qex = exb.length ? `<div class="qex"><button type="button" class="ghost qexbtn" id="qexBtn" aria-expanded="${quizExOpen}">${quizExOpen ? '예문 접기' : '예문 보기'}</button><div class="qexbody" id="qexBody" ${quizExOpen ? '' : 'hidden'}>${exb.map((b, k) => `<div class="exitem"><div class="exen"><span>${exHide ? maskEx(b[0], exw.w) : esc(b[0])}</span>${TTS.ok && !exHide ? `<button class="spk" data-qexsay="${k}" aria-label="예문 듣기">${SPK}</button>` : ''}</div>${answered ? b.slice(1).map(l => `<div class="exko">${esc(l)}</div>`).join('') : ''}</div>`).join('')}</div></div>` : '';
     app.innerHTML = `<section class="panel">
       ${(() => { const nt = days.find(d => d.id === it.w.dayId)?.note; return nt ? `<div class="qnote">${esc(nt)}</div>` : ''; })()}
       <div class="qtop"><span class="num">${quiz.i + 1} / ${total}</span><span class="sub">${quiz.chunk ? `구간 ${quiz.chunk.ci + 1}/${quiz.chunk.parts.length} · ${quiz.chunk.round}회째` : esc(it.w.day)}</span><span class="grow"></span><button type="button" class="qchk" data-chk="${it.w.id}" aria-pressed="${isChecked(it.w.id)}" title="이 단어 체크(숙지)"><span class="box">${CHK}</span>체크</button><button type="button" class="qchk qstar" data-star="${it.w.id}" aria-pressed="${isFocus(it.w.id)}" title="이 단어 집중"><span class="box">${STAR}</span>집중</button><button class="ghost" id="quit">그만하기</button></div>
       <div class="bar"><i style="width:${(quiz.i + (answered ? 1 : 0)) / total * 100}%"></i></div>
-      <div class="prompt"><span class="dir">${it.dir === 'ko' ? '영어 단어는?' : it.dir === 'listen' ? '듣고 뜻을 고르세요' : '뜻은?'}</span><span class="q ${it.dir === 'ko' ? 'ko' : ''}">${hideQ ? '· · ·' : esc(q)}</span>${TTS.ok ? `<button class="spk" id="qSay" aria-label="문제 듣기" title="듣기">${SPK}</button>` : ''}</div>
+      <div class="prompt"><span class="dir">${it.dir === 'ko' ? '영어 단어는?' : it.dir === 'listen' ? '듣고 뜻을 고르세요' : '뜻은?'}</span><span class="q ${it.dir === 'ko' ? 'ko' : ''}">${hideQ ? '· · ·' : esc(q)}</span>${TTS.ok ? `<button class="spk" id="qSay" aria-label="문제 듣기" title="듣기">${SPK}</button>` : ''}</div>${qex}
       ${body}${fb}
       <div class="qfoot"><button class="btn" id="prev" type="button" ${quiz.i > 0 ? '' : 'disabled'}>이전</button><span class="hint">${reviewing ? '<span class="qback">이미 푼 문제예요</span>' : `${it.options ? `숫자키 1–${it.options.length}로 선택, ` : ''}Enter로 다음`}</span><button class="btn primary" id="next" ${answered ? '' : 'hidden'}>${quiz.i < total - 1 ? '다음' : '결과 보기'}</button></div>
     </section>`;
     app.querySelectorAll('[data-o]').forEach(b => b.onclick = () => answer(it.options[+b.dataset.o]));
     if ($('#tf')) { $('#tf').onsubmit = e => { e.preventDefault(); const v = $('#ta').value.trim(); if (v) answer(v); }; if (!answered) $('#ta').focus(); }
     $('#qSay') && ($('#qSay').onclick = () => sayNow(q));
+    $('#qexBtn') && ($('#qexBtn').onclick = () => { quizExOpen = !quizExOpen; try { localStorage.setItem('vocab-quiz-ex', quizExOpen ? '1' : '0'); } catch (e) {} $('#qexBody').hidden = !quizExOpen; $('#qexBtn').textContent = quizExOpen ? '예문 접기' : '예문 보기'; $('#qexBtn').setAttribute('aria-expanded', quizExOpen); const ta = $('#ta'); if (ta && !ta.disabled) ta.focus({ preventScroll: true }); });
+    app.querySelectorAll('[data-qexsay]').forEach(b => b.onclick = () => sayNow(exb[+b.dataset.qexsay][0]));
     // 화면을 다시 그리지 않고 체크만 바꾼다(입력 중인 답이 지워지지 않게)
     bindChecks(app, () => { const ta = $('#ta'); if (it.options && answered) { renderQuiz(); return; } if (ta && !ta.disabled) ta.focus(); else if (answered) $('#next').focus(); });
     $('#override') && ($('#override').onclick = () => { it.correct = true; render(); });
