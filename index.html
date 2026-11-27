@@ -193,6 +193,11 @@ textarea.grow{min-height:0;resize:none;overflow:hidden;font-family:var(--f-ui);l
 .expanel{border-bottom:1px solid var(--line);background:var(--bg)}
 .exinner{display:flex;flex-direction:column;gap:10px;padding:10px 0 12px calc(4.2em + 10px)}
 .exbtns{display:flex;justify-content:flex-end;gap:8px}
+.mixchip{border-style:dashed}
+.mixname{font:700 18px var(--f-ui);flex:1;min-width:0}
+.mixnav{display:flex;align-items:center;justify-content:center;gap:12px;margin:12px 0}
+.mixpg{min-width:4.5em;text-align:center;color:var(--muted)}
+.mixtest{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:6px 0 10px}
 .qex{display:flex;flex-direction:column;align-items:center;gap:8px;margin:-6px 0 14px}
 .qex .exitem{text-align:left}
 .qexbody{display:flex;flex-direction:column;gap:10px;width:100%;background:var(--bg);border-radius:8px;padding:10px 12px}
@@ -534,7 +539,7 @@ details.setbox > .sets{padding-top:10px}
 
   // ---------- storage (localStorage only) ----------
   // 저장 형식: localStorage['vocab-days-v1'] = JSON 문자열 { days:[...] } 
-  const APP_VER = '2026.11.26-quizex';
+  const APP_VER = '2026.11.28-mix20';
   const LKEY = 'vocab-days-v1', BKEY = 'vocab-last-backup';
   let storageOk = true;
 
@@ -701,6 +706,44 @@ details.setbox > .sets{padding-top:10px}
   function paintStars(id) { const on = isFocus(id); document.querySelectorAll(`[data-star="${id}"]`).forEach(b => b.setAttribute('aria-pressed', String(on))); }
   // 대상 필터: 'checked'(또는 true) = 체크, 'focus' = 집중, 그 외 = 전체
   const markOk = (w, kind) => kind === 'focus' ? !!w.focus : kind ? !!w.checked : true;
+  // ---------- 집중·체크 랜덤 묶음 ----------
+  // 한 바퀴(셔플 백): 대상 단어 전체를 한 번 섞어 20개씩 차례로 보여준다 → 한 바퀴 안에서 모든 단어가 정확히 한 번씩, 순서는 무작위
+  // 섞기는 crypto 난수 + 피셔-예이츠(나머지 편향 없는 정수 뽑기)
+  const MIX_ID = '__mix', MIX_N = 20;
+  const mix = { src: 'focus', order: [], pos: 0, end: 0, round: 1 };
+  try { Object.assign(mix, JSON.parse(localStorage.getItem('vocab-mix') || '{}')); } catch (e) {}
+  const saveMix = () => { try { localStorage.setItem('vocab-mix', JSON.stringify(mix)); } catch (e) {} };
+  function randInt(n) {   // 0 ≤ r < n, 균등
+    if (!(window.crypto && crypto.getRandomValues)) return Math.floor(Math.random() * n);
+    const lim = Math.floor(0x100000000 / n) * n, buf = new Uint32Array(1);
+    do crypto.getRandomValues(buf); while (buf[0] >= lim);
+    return buf[0] % n;
+  }
+  const cshuffle = a => { a = a.slice(); for (let i = a.length - 1; i > 0; i--) { const j = randInt(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  const mixOk = w => mix.src === 'both' ? !!(w.focus || w.checked) : mix.src === 'checked' ? !!w.checked : !!w.focus;
+  const mixEligible = () => { const out = []; for (const d of sorted()) for (const w of d.words) if (mixOk(w)) out.push(w.id); return out; };
+  function mixReshuffle(newRound) {
+    mix.order = cshuffle(mixEligible()); mix.pos = 0; mix.end = Math.min(MIX_N, mix.order.length);
+    mix.round = newRound ? (mix.round || 1) + 1 : 1; saveMix();
+  }
+  // 다음 묶음: 본 부분은 그대로 두고, 남은 부분에서 대상이 아니게 된 단어는 빼고, 새로 대상이 된 단어는 남은 부분의 무작위 위치에 끼워 넣는다
+  function mixNext() {
+    const E = new Set(mixEligible()), all = new Set(mix.order);
+    const seen = mix.order.slice(0, mix.end).filter(id => findWord(id));
+    let rest = mix.order.slice(mix.end).filter(id => E.has(id));
+    for (const id of E) if (!all.has(id)) rest.splice(randInt(rest.length + 1), 0, id);
+    if (!rest.length) { mixReshuffle(true); return 'round'; }
+    mix.order = seen.concat(rest); mix.pos = seen.length; mix.end = Math.min(mix.pos + MIX_N, mix.order.length); saveMix();
+  }
+  function mixPrev() { if (mix.pos <= 0) return; mix.end = mix.pos; mix.pos = Math.max(0, mix.pos - MIX_N); saveMix(); }
+  function mixWords() {
+    let ws = mix.order.slice(mix.pos, mix.end).map(id => findWord(id)?.word).filter(Boolean);
+    if (!ws.length && mixEligible().length) { mixReshuffle(false); ws = mix.order.slice(mix.pos, mix.end).map(id => findWord(id)?.word).filter(Boolean); }
+    return ws;
+  }
+  const mixDay = () => ({ id: MIX_ID, name: mixTitle(), note: '', words: mixWords() });
+  const mixTitle = () => `${mix.src === 'both' ? '집중+체크' : mix.src === 'checked' ? '체크' : '집중'} 랜덤 ${MIX_N}`;
+  const getDay = id => id === MIX_ID ? mixDay() : days.find(d => d.id === id);
   const dayCountText = day => `${day.words.length}단어 · 체크 ${day.words.filter(w => w.checked).length} · 집중 ${day.words.filter(w => w.focus).length}`;
   function bindChecks(root, after) {
     root.querySelectorAll('[data-chk]').forEach(b => b.onclick = () => { const id = b.dataset.chk; setChecked(id, !isChecked(id)); paintChecks(id); after && after(id); });
@@ -783,7 +826,7 @@ details.setbox > .sets{padding-top:10px}
       ttsOpt[k] = v; saveTts();
       if (k === 'chunk') paintVoices();   // 구간 반복 줄을 보이거나 숨김
       $('#ttsSum').textContent = ttsSummary();
-      const day = days.find(d => d.id === curDay);
+      const day = getDay(curDay);
       if (player && day && player.dayId === day.id && k !== 'rate') { const cid = player.steps[player.cur]?.id; const was = player.playing; playDay(day, ttsOpt.order === 'seq' ? cid : null, player.only); if (!was) pausePlayer(); }
     });
   }
@@ -886,7 +929,7 @@ details.setbox > .sets{padding-top:10px}
   function stepPlayer() {
     if (!player || !player.playing) return;
     if (player.cur >= player.steps.length) {
-      const day = days.find(d => d.id === player.dayId);
+      const day = getDay(player.dayId);
       // 계속 반복: 목록을 새로 만들어(랜덤이면 다시 섞고, 그사이 추가·체크 변경도 반영) 처음부터
       const again = ttsOpt.loop && day ? buildSteps(day, null, player.only) : [];
       if (!again.length) { stopPlayer(); toast('다 읽었어요'); return; }
@@ -961,7 +1004,7 @@ details.setbox > .sets{padding-top:10px}
   }
   function paintPlayer() {
     const box = $('#playerBox'); if (!box) return;
-    const day = days.find(d => d.id === curDay); if (!day) return;
+    const day = getDay(curDay); if (!day) return;
     const mine = player && player.dayId === day.id;
     const st = mine ? player.steps[Math.min(player.cur, player.steps.length - 1)] : null;
     const w = st ? day.words.find(x => x.id === st.id) : null;
@@ -991,6 +1034,48 @@ details.setbox > .sets{padding-top:10px}
     $('#cNext') && ($('#cNext').onclick = () => jumpChunk(1));
   }
 
+  // ---------- render: 집중·체크 랜덤 ----------
+  function mixPanelHTML(ws) {
+    const total = mix.order.length, page = Math.floor(mix.pos / MIX_N) + 1, pages = Math.max(1, Math.ceil(total / MIX_N));
+    const left = Math.max(0, total - mix.end);
+    const rows = ws.map((x, i) => { const f = findWord(x.id); return `<div class="row" data-w="${x.id}">${marks(x.id, x.w)}<span class="w wopen" data-open="${x.id}" role="button" aria-expanded="false">${esc(x.w)}${x.ex ? EXMARK : ''}</span><span class="m">${esc(x.m)}</span><span class="acts">${TTS.ok ? `<button class="spk" data-say="${x.id}" aria-label="${esc(x.w)} 듣기" title="듣기">${SPK}</button>` : ''}<span class="sub tag">${esc(f ? f.day.name : '')}</span></span></div>`; }).join('');
+    const nav = `<div class="mixnav"><button class="btn sm" data-mprev type="button" ${mix.pos > 0 ? '' : 'disabled'}>이전 묶음</button><span class="num mixpg">${page} / ${pages}</span><button class="btn sm primary" data-mnext type="button" ${total ? '' : 'disabled'}>${left ? '다음 묶음' : '새 바퀴 시작'}</button></div>`;
+    return `<section class="panel">
+        <div class="dayhead"><span class="mixname">${esc(mixTitle())}</span><span class="sub num">${total}단어 · ${mix.round || 1}바퀴째 · 남은 ${left}개</span>
+          <div class="dayacts"><button class="btn sm" id="mixShuffle" type="button" ${total ? '' : 'disabled'}>처음부터 새로 섞기</button></div></div>
+        <div id="mixOpts">${segRow('mix', 'src', '대상', mix.src, [['focus', '★ 집중'], ['checked', '✓ 체크'], ['both', '둘 다']])}</div>
+        <div class="hint">한 바퀴 동안 대상 단어가 빠짐없이 한 번씩, 무작위 순서로 ${MIX_N}개씩 나와요. 중간에 체크·집중을 바꾸면 다음 묶음부터 반영돼요.</div>
+        ${ws.length ? `${nav}
+        ${TTS.ok ? '<div class="listen"><div id="playerBox" class="listen-in"></div><div id="ttsSet"></div></div>' : ''}
+        <div class="mixtest"><button class="btn primary" id="mixTest" type="button">이 ${ws.length}개 테스트</button><span class="hint">테스트 탭의 방식·방향·보기 설정을 그대로 써요</span></div>
+        <div class="list">${rows}</div>
+        ${nav}` : `<div class="empty">${mix.src === 'checked' ? '체크(✓)한' : mix.src === 'both' ? '체크(✓)나 집중(★)을 표시한' : '집중(★)을 표시한'} 단어가 아직 없어요. 단어 옆 표시를 눌러 두면 여기서 ${MIX_N}개씩 랜덤으로 볼 수 있어요.</div>`}
+      </section>`;
+  }
+  function bindMix(day) {
+    const ws = day.words;
+    bindSegs($('#mixOpts'), (k, v) => { if (v === mix.src) return; stopPlayer(); mix.src = v; mixReshuffle(false); render(); window.scrollTo(0, 0); });
+    const go = fn => { stopPlayer(); closeEx(); const r = fn(); render(); const pn = $('.mixnav'); if (pn) { let t = 0; for (let n = pn; n; n = n.offsetParent) t += n.offsetTop; window.scrollTo(0, Math.max(0, t - 80)); } if (r === 'round') toast('한 바퀴 다 봤어요. 새로 섞어서 다시 시작해요'); };
+    app.querySelectorAll('[data-mnext]').forEach(b => b.onclick = () => go(mixNext));
+    app.querySelectorAll('[data-mprev]').forEach(b => b.onclick = () => go(mixPrev));
+    $('#mixShuffle') && ($('#mixShuffle').onclick = async () => {
+      const ok = await confirmModal({ title: '처음부터 새로 섞을까요?', html: '지금 바퀴에서 어디까지 봤는지가 초기화되고, 1바퀴째부터 다시 시작해요.', ok: '새로 섞기' });
+      if (ok) go(() => mixReshuffle(false));
+    });
+    $('#mixTest') && ($('#mixTest').onclick = () => {
+      stopPlayer();
+      const pool = ws.map(w => { const f = findWord(w.id); return { ...w, day: f ? f.day.name : '', dayId: f ? f.day.id : '' }; });
+      setTabs('test'); startQuiz(pool, true); quiz.mixPool = pool;
+    });
+    app.querySelectorAll('[data-open]').forEach(el => el.onclick = () => toggleEx(el.dataset.open));
+    if (exOpen) { const id = exOpen; exOpen = null; exEditing = false; mountEx(id, false); }
+    app.querySelectorAll('[data-say]').forEach(b => b.onclick = () => { const x = findWord(b.dataset.say)?.word; if (x) sayNow(x.w, () => { if (ttsOpt.meaning) setTimeout(() => say(x.m), 350); }); });
+    bindChecks(app, () => { if (!player) paintPlayer(); });
+    paintPlayer(); paintVoices();
+    if (player && player.dayId === MIX_ID) markSpeaking(player.steps[player.cur]?.id);
+  }
+  function setTabs(t) { $('#tab-words').setAttribute('aria-selected', t === 'words'); $('#tab-test').setAttribute('aria-selected', t !== 'words'); }
+
   // ---------- render: word book ----------
   function renderWords() {
     const list = sorted();
@@ -1004,18 +1089,19 @@ details.setbox > .sets{padding-top:10px}
       $('#mkSample').onclick = () => { const d = addDay('Day 1 (예시)'); d.words = SAMPLE.map(([w, m]) => ({ id: uid('w'), w, m })); saveDay(d); setStatus(); render(); };
       return;
     }
-    if (!curDay || !days.find(d => d.id === curDay)) curDay = list[0].id;
-    const day = days.find(d => d.id === curDay);
+    if (!curDay || (curDay !== MIX_ID && !days.find(d => d.id === curDay))) curDay = list[0].id;
+    const isMix = curDay === MIX_ID;
+    const day = getDay(curDay);
     const chipX = 0;
     const chips = dayOrdering
       ? list.map(d => `<div class="chip dchip" data-dord="${d.id}"><span class="handle dhandle" aria-hidden="true">${GRIP}</span><span class="dname">${esc(d.name)}</span></div>`).join('')
-      : list.map(d => `<button class="chip" aria-pressed="${d.id === curDay}" data-day="${d.id}">${esc(d.name)} <span class="num">${d.words.length}</span></button>`).join('');
+      : `<button class="chip mixchip" aria-pressed="${isMix}" data-day="${MIX_ID}">${esc(mixTitle())} <span class="num">${mixEligible().length}</span></button>` + list.map(d => `<button class="chip" aria-pressed="${d.id === curDay}" data-day="${d.id}">${esc(d.name)} <span class="num">${d.words.length}</span></button>`).join('');
     const rows = day.words.map((x, i) => editingWord === x.id
       ? `<div class="row editing" data-w="${x.id}"><span class="idx num">${i + 1}</span><textarea class="grow" rows="1" id="ew-${x.id}" aria-label="단어">${esc(x.w)}</textarea><textarea class="grow" rows="1" id="em-${x.id}" aria-label="뜻">${esc(x.m)}</textarea><span class="acts"><button class="btn sm" data-cancel>취소</button><button class="btn sm primary" data-save="${x.id}">저장</button></span></div>`
       : ordering
       ? `<div class="row ordrow editrow picking ${picked.has(x.id) ? 'picked' : ''}" data-w="${x.id}" data-ord="${x.id}" data-pickrow="${x.id}"><span class="eicons"><span class="handle" title="끌어서 옮기기" aria-hidden="true">${GRIP}</span><button type="button" class="selb" data-pick="${x.id}" aria-pressed="${picked.has(x.id)}" aria-label="${esc(x.w)} 선택"><span class="dot">${DOT}</span></button></span><span class="w">${esc(x.w)}</span><span class="m">${esc(x.m)}</span><span class="acts"><button class="btn sm" data-up="${x.id}" aria-label="${esc(x.w)} 위로" ${i ? '' : 'disabled'}>▲</button><button class="btn sm" data-down="${x.id}" aria-label="${esc(x.w)} 아래로" ${i < day.words.length - 1 ? '' : 'disabled'}>▼</button></span></div>`
       : `<div class="row" data-w="${x.id}">${marks(x.id, x.w)}<span class="w wopen" data-open="${x.id}" role="button" aria-expanded="false">${esc(x.w)}${x.ex ? EXMARK : ''}</span><span class="m">${esc(x.m)}</span><span class="acts">${TTS.ok ? `<button class="spk" data-say="${x.id}" aria-label="${esc(x.w)} 듣기" title="듣기">${SPK}</button>` : ''}<button class="ghost" data-edit="${x.id}">수정</button><button class="ghost" data-del="${x.id}">삭제</button></span></div>`).join('');
-    app.innerHTML = `
+    const bar = `
       <div class="field daybar">
         <button class="dayhdr" id="dayPick" type="button" aria-expanded="${dayListOpen}"><span class="label">목록 ${list.length}개</span><span class="dpcur">${esc(day.name)}</span><span class="dpar">${dayListOpen ? '접기' : '목록 열기'}</span></button>
         ${dayListOpen && dayOrdering ? '<div class="selhint">≡를 누른 채 끌어서 목록 순서를 바꿔요. 놓으면 바로 저장돼요.</div>' : ''}
@@ -1027,7 +1113,9 @@ details.setbox > .sets{padding-top:10px}
           <button type="button" class="btn sm primary" id="addDay">+ <span id="kwPreview">${esc(nextNameFor(dayKeyword))}</span></button>
           <button type="button" class="btn sm" id="dayOrdMode" ${list.length > 1 ? '' : 'disabled'}>순서</button>
         </div>` : ''}
-      </div>
+      </div>`;
+    if (isMix) app.innerHTML = bar + mixPanelHTML(day.words);
+    else app.innerHTML = bar + `
       <section class="panel">
         <div class="dayhead">
           <input class="dayname" id="dayname" value="${esc(day.name)}" aria-label="Day 이름">
@@ -1113,6 +1201,7 @@ details.setbox > .sets{padding-top:10px}
       if (isNarrow()) { dayListOpen = false; saveDayListOpen(); }
       render(); toast(`${days.find(d => d.id === curDay).name} 만들었어요`);
     });
+    if (isMix) { bindMix(day); return; }
     const dn = $('#dayname');
     // 주제 메모: 입력하는 대로 높이를 맞추고, 손을 떼면 저장
     const dnote = $('#daynote');
@@ -1534,16 +1623,16 @@ details.setbox > .sets{padding-top:10px}
       <div class="qfoot"><button class="btn" id="prev" type="button" ${quiz.i > 0 ? '' : 'disabled'}>이전</button><span class="hint">${reviewing ? '<span class="qback">이미 푼 문제예요</span>' : `${it.options ? `숫자키 1–${it.options.length}로 선택, ` : ''}Enter로 다음`}</span><button class="btn primary" id="next" ${answered ? '' : 'hidden'}>${quiz.i < total - 1 ? '다음' : '결과 보기'}</button></div>
     </section>`;
     app.querySelectorAll('[data-o]').forEach(b => b.onclick = () => answer(it.options[+b.dataset.o]));
-    if ($('#tf')) { $('#tf').onsubmit = e => { e.preventDefault(); const v = $('#ta').value.trim(); if (v) answer(v); }; if (!answered) $('#ta').focus(); }
+    if ($('#tf')) { $('#tf').onsubmit = e => { e.preventDefault(); const v = $('#ta').value.trim(); if (v) answer(v); }; if (!answered) $('#ta').focus({ preventScroll: true }); }
     $('#qSay') && ($('#qSay').onclick = () => sayNow(q));
     $('#qexBtn') && ($('#qexBtn').onclick = () => { quizExOpen = !quizExOpen; try { localStorage.setItem('vocab-quiz-ex', quizExOpen ? '1' : '0'); } catch (e) {} $('#qexBody').hidden = !quizExOpen; $('#qexBtn').textContent = quizExOpen ? '예문 접기' : '예문 보기'; $('#qexBtn').setAttribute('aria-expanded', quizExOpen); const ta = $('#ta'); if (ta && !ta.disabled) ta.focus({ preventScroll: true }); });
     app.querySelectorAll('[data-qexsay]').forEach(b => b.onclick = () => sayNow(exb[+b.dataset.qexsay][0]));
     // 화면을 다시 그리지 않고 체크만 바꾼다(입력 중인 답이 지워지지 않게)
-    bindChecks(app, () => { const ta = $('#ta'); if (it.options && answered) { renderQuiz(); return; } if (ta && !ta.disabled) ta.focus(); else if (answered) $('#next').focus(); });
+    bindChecks(app, () => { const ta = $('#ta'); if (it.options && answered) { const y = window.scrollY; renderQuiz(); window.scrollTo(0, y); return; } if (ta && !ta.disabled) ta.focus({ preventScroll: true }); else if (answered) $('#next').focus({ preventScroll: true }); });
     $('#override') && ($('#override').onclick = () => { it.correct = true; render(); });
     $('#quit').onclick = () => { if (quiz.chunk) { quiz.chunk = null; view = 'setup'; render(); return; } view = 'result'; quiz.items = quiz.items.filter(x => x.answer !== null); render(); };
     $('#prev').onclick = () => { if (quiz.i > 0) { quiz.i--; render(); } };
-    if (answered) $('#next').focus();
+    if (answered) $('#next').focus({ preventScroll: true });
     $('#next').onclick = next;
   }
   document.addEventListener('keydown', e => {
@@ -1580,14 +1669,15 @@ details.setbox > .sets{padding-top:10px}
       <div class="score"><span class="big">${ok}</span><span class="of num">/ ${items.length}</span><span class="sub">${items.length ? Math.round(ok / items.length * 100) + '%' : ''}</span></div>
       <div class="resbtns">
         ${wrong.length ? `<button class="btn primary" id="retryWrong">틀린 ${wrong.length}개만 다시</button>` : ''}
-        <button class="btn" id="again">같은 범위 다시</button>
-        <button class="btn" id="toSetup">설정 바꾸기</button>
+        <button class="btn" id="again">${quiz.mixPool ? '같은 20개 다시' : '같은 범위 다시'}</button>
+        ${quiz.mixPool ? '<button class="btn" id="toMix">랜덤 목록으로</button>' : '<button class="btn" id="toSetup">설정 바꾸기</button>'}
       </div>
       ${wrong.length ? `<div class="field"><div class="listhead"><span class="label">틀린 단어</span><span class="resbtns"><button class="btn sm" id="checkWrong">모두 체크</button><button class="btn sm" id="focusWrong">★ 모두 집중</button></span></div><div class="list wronglist">${wrong.map(x => `<div class="row">${marks(x.w.id, x.w.w)}<span class="w">${esc(x.w.w)}</span><span class="m">${esc(x.w.m)}</span><span class="sub tag">${TTS.ok ? `<button class="spk" data-rs="${esc(x.w.w)}" aria-label="${esc(x.w.w)} 듣기">${SPK}</button>` : ''}${esc(x.w.day)}</span></div>`).join('')}</div></div>` : (items.length ? `<div class="fb ok"><b>전부 맞혔어요</b></div>` : '')}
     </section>`;
-    $('#retryWrong') && ($('#retryWrong').onclick = () => startQuiz(wrong.map(x => x.w), true));
-    $('#again').onclick = () => startQuiz(poolFor(setup.sel));
-    $('#toSetup').onclick = () => { view = 'setup'; render(); };
+    $('#retryWrong') && ($('#retryWrong').onclick = () => { const mp = quiz.mixPool; startQuiz(wrong.map(x => x.w), true); if (mp) quiz.mixPool = mp; });
+    $('#again').onclick = () => { const mp = quiz.mixPool; if (mp) { startQuiz(mp, true); quiz.mixPool = mp; } else startQuiz(poolFor(setup.sel)); };
+    $('#toSetup') && ($('#toSetup').onclick = () => { view = 'setup'; render(); });
+    $('#toMix') && ($('#toMix').onclick = () => { curDay = MIX_ID; view = 'words'; setTabs('words'); render(); });
     app.querySelectorAll('[data-rs]').forEach(b => b.onclick = () => sayNow(b.dataset.rs));
     bindChecks(app);
     $('#focusWrong') && ($('#focusWrong').onclick = () => { const ids = [...new Set(wrong.map(x => x.w.id))]; ids.forEach(id => { setFocus(id, true); paintStars(id); }); toast(`${ids.length}개 집중 표시했어요`); });
@@ -1724,7 +1814,7 @@ details.setbox > .sets{padding-top:10px}
   function switchTab(t) {
     stopPlayer(); cancelSpeech(); exitSelect(); dayOrdering = false;
     // 테스트로 갈 때 고른 범위가 없으면 지금 보던 목록을 범위로
-    if (t !== 'words' && !setup.sel.size && curDay) setup.sel.add(curDay);
+    if (t !== 'words' && !setup.sel.size && curDay && curDay !== MIX_ID) setup.sel.add(curDay);
     view = t === 'words' ? 'words' : 'setup';
     $('#tab-words').setAttribute('aria-selected', t === 'words');
     $('#tab-test').setAttribute('aria-selected', t !== 'words');
